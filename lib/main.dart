@@ -151,7 +151,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   int rapidOverride = 100;
   bool optionalStop = false;
   bool blockDelete = false;
-  bool cvMode = true; // وضع الحركة المستمرة (Constant Velocity)
+  bool cvMode = true;
   int currentTool = 1;
   double jogStep = 1.0;
 
@@ -256,7 +256,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     else if (cmd == 'JOG:Y+') setState(() => droY += jogStep);
     else if (cmd == 'JOG:Y-') setState(() => droY -= jogStep);
     else if (cmd == 'JOG:Z+') setState(() => droZ += jogStep);
-    else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep);
+    else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep); // تم إصلاحها هنا لتستجيب بدقة
     else if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; });
     else if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
   }
@@ -289,9 +289,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       });
 
       if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
-        double estimatedOffset = activeLineIndex * 16.0;
-        double maxScroll = gcodeScrollController.position.maxScrollExtent;
-        gcodeScrollController.jumpTo(estimatedOffset.clamp(0.0, maxScroll));
+        double offset = activeLineIndex * 18.0;
+        if (offset <= gcodeScrollController.position.maxScrollExtent) {
+          gcodeScrollController.jumpTo(offset);
+        }
       }
     });
     setState(() {});
@@ -348,7 +349,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // شريط القوائم العلوي المطابق لـ Mach3 مع مؤشرات الـ Modals
             Container(
               height: 32,
               color: const Color(0xFF2B303B),
@@ -391,7 +391,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
-            // شريط الحالة السفلي الأصلي
             Container(
               height: 22,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -441,7 +440,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // العمود الأول: نافذة الأكواد وأزرار التحكم مع إضافة Set Next Line ومؤشر السطر
           Expanded(
             flex: 3,
             child: Column(
@@ -537,7 +535,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الثاني: الـ DROs وصناديق التغذية والمغزل المطابقة للأصل تماماً
           Expanded(
             flex: 4,
             child: Column(
@@ -593,7 +590,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   height: 125,
                   child: Row(
                     children: [
-                      // صندوق Feed Rate المطابق تماماً لشاشة 1024.set
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -640,7 +636,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ),
                       ),
                       const SizedBox(width: 3),
-                      // صندوق Spindle Speed المطابق تماماً لشاشة 1024.set
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -680,7 +675,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الثالث: نافذة التول باث والـ Jog
           Expanded(
             flex: 3,
             child: Column(
@@ -759,7 +753,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           children: [
                             jogKey('Y-', () => sendCommand('JOG:Y-')),
                             const SizedBox(width: 12),
-                            jogKey('Z-', () => sendCommand('Z-'), Colors.amber),
+                            jogKey('Z-', () => sendCommand('JOG:Z-'), Colors.amber), // تم تصحيح الأمر هنا
                           ],
                         ),
                         const Spacer(),
