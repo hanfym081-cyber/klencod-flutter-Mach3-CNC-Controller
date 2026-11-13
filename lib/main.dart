@@ -39,16 +39,19 @@ class GPoint {
   final double y;
   final double z;
   final bool rapid;
-  const GPoint(this.x, this.y, this.z, this.rapid);
+  final int lineIndex;
+  const GPoint(this.x, this.y, this.z, this.rapid, this.lineIndex);
 }
 
 class GCodeResult {
   final List<GPoint> points;
+  final List<String> rawLines;
   final int lines;
   final int movements;
   final double distance;
   const GCodeResult({
     required this.points,
+    required this.rawLines,
     required this.lines,
     required this.movements,
     required this.distance,
@@ -58,6 +61,7 @@ class GCodeResult {
 class GCodeParser {
   static GCodeResult parse(String source) {
     final points = <GPoint>[];
+    final rawLines = source.split(RegExp(r'\r?\n'));
     double x = 0, y = 0, z = 0;
     double scale = 1;
     bool absolute = true;
@@ -65,9 +69,8 @@ class GCodeParser {
     double distance = 0;
     int movements = 0;
 
-    final lines = source.split(RegExp(r'\r?\n'));
-    for (final original in lines) {
-      String line = original.toUpperCase();
+    for (int i = 0; i < rawLines.length; i++) {
+      String line = rawLines[i].toUpperCase();
       line = line.replaceAll(RegExp(r'\([^)]*\)'), '');
       line = line.split(';').first;
       line = line.replaceAll(RegExp(r'\s+'), '');
@@ -97,10 +100,16 @@ class GCodeParser {
 
         distance += math.sqrt(math.pow(x - oldX, 2) + math.pow(y - oldY, 2) + math.pow(z - oldZ, 2));
         movements++;
-        points.add(GPoint(x, y, z, rapid));
+        points.add(GPoint(x, y, z, rapid, i));
       }
     }
-    return GCodeResult(points: points, lines: lines.length, movements: movements, distance: distance);
+    return GCodeResult(
+      points: points,
+      rawLines: rawLines,
+      lines: rawLines.length,
+      movements: movements,
+      distance: distance,
+    );
   }
 }
 
@@ -123,7 +132,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   String pcIp = '192.168.1.100';
   int pcPort = 50002;
 
-  // Live DROs
+  // Live DROs & Machine Parameters
   double droX = 0.0000;
   double droY = 0.0000;
   double droZ = 0.0000;
@@ -132,13 +141,18 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool spindleOn = false;
   int spindleRpm = 12000;
   int feedOverride = 100;
+  int rapidOverride = 100; // نسبة السرعة السريعة الجديدة
+  bool optionalStop = false; // زر التوقف الاختياري الجديد
+  bool blockDelete = false; // زر حذف الأسطر الجديد
   int currentTool = 1;
   double jogStep = 1.0;
 
-  // --- Built-in Simulator State ---
+  // Simulator State & Active Line Tracking
   Timer? simulatorTimer;
   int simulatorIndex = 0;
+  int activeLineIndex = -1;
   bool isSimulating = false;
+  final ScrollController gcodeScrollController = ScrollController();
 
   final TextEditingController mdiController = TextEditingController();
 
@@ -152,6 +166,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   void dispose() {
     simulatorTimer?.cancel();
     pcSocket?.destroy();
+    gcodeScrollController.dispose();
     super.dispose();
   }
 
@@ -187,14 +202,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     setState(() => connected = false);
   }
 
-  // --- COMMAND HANDLER (Supports Built-in Simulation Mode) ---
   void sendCommand(String cmd) {
     if (connected && pcSocket != null) {
       pcSocket!.write('$cmd\n');
       return;
     }
 
-    // --- OFFLINE / SIMULATION MODE LOGIC ---
     if (cmd == 'RESET') {
       setState(() {
         estop = !estop;
@@ -217,6 +230,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       stopSimulation();
       setState(() {
         simulatorIndex = 0;
+        activeLineIndex = -1;
         droX = 0;
         droY = 0;
         droZ = 0;
@@ -242,7 +256,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     if (isSimulating) return;
 
     setState(() => isSimulating = true);
-    simulatorTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    int interval = (100 / (feedOverride == 0 ? 100 : feedOverride) * 100).round();
+
+    simulatorTimer = Timer.periodic(Duration(milliseconds: math.max(20, interval)), (timer) {
       if (simulatorIndex >= result!.points.length) {
         stopSimulation();
         return;
@@ -252,8 +268,16 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = pt.x;
         droY = pt.y;
         droZ = pt.z;
+        activeLineIndex = pt.lineIndex;
         simulatorIndex++;
       });
+
+      if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
+        double offset = activeLineIndex * 18.0;
+        if (offset < gcodeScrollController.position.maxScrollExtent) {
+          gcodeScrollController.jumpTo(offset);
+        }
+      }
     });
   }
 
@@ -296,6 +320,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         gcode = content;
         result = parsed;
         simulatorIndex = 0;
+        activeLineIndex = -1;
       });
       if (connected) sendCommand('LOAD_FILE:${file.name}');
     } catch (_) {}
@@ -353,7 +378,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   const Text('Status: ', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
                   Expanded(
                     child: Text(
-                      estop ? 'Emergency Mode Active - Press RESET' : (isSimulating ? 'Running simulation loop...' : 'Ready - Simulation Mode Active'),
+                      estop ? 'Emergency Mode Active - Press RESET' : (isSimulating ? 'Running active line: $activeLineIndex' : 'Ready - Simulation Mode Active'),
                       style: TextStyle(color: estop ? Colors.redAccent : (isSimulating ? Colors.amberAccent : Colors.white70), fontSize: 11, fontFamily: 'monospace'),
                     ),
                   ),
@@ -398,6 +423,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
+          // Column 1: G-Code Window & Cycle Buttons + Optional Stop / Block Delete
           Expanded(
             flex: 3,
             child: Column(
@@ -405,20 +431,71 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 Expanded(
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0A0C10),
                       border: Border.all(color: Colors.grey.shade700, width: 1.5),
                     ),
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        gcode.isEmpty ? 'N10 G21 G90 G54\nN20 M3 S12000\nN30 G0 X0 Y0\n(Load G-Code file to simulate...)' : gcode,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white),
-                      ),
-                    ),
+                    child: result == null || result!.rawLines.isEmpty
+                        ? const Center(child: Text('N10 G21 G90 G54\nN20 M3 S12000\n(Load G-Code file...)', style: TextStyle(color: Colors.white54, fontSize: 11)))
+                        : ListView.builder(
+                            controller: gcodeScrollController,
+                            itemCount: result!.rawLines.length,
+                            itemBuilder: (context, index) {
+                              bool isActive = index == activeLineIndex;
+                              return Container(
+                                color: isActive ? Colors.blue.shade900 : Colors.transparent,
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 35,
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: TextStyle(fontSize: 10, color: isActive ? Colors.yellow : Colors.grey),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        result!.rawLines[index],
+                                        style: TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11,
+                                          color: isActive ? Colors.white : Colors.lightGreenAccent,
+                                          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                   ),
                 ),
                 const SizedBox(height: 4),
+                // Optional Stop & Block Delete Toggles
+                Row(
+                  children: [
+                    Expanded(
+                      child: classicMachBtn(
+                        optionalStop ? 'Opt. Stop (ON)' : 'Opt. Stop (OFF)',
+                        optionalStop ? Colors.amber.shade800 : const Color(0xFF333B48),
+                        () => setState(() => optionalStop = !optionalStop),
+                        height: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: classicMachBtn(
+                        blockDelete ? 'Block Del (ON)' : 'Block Del (OFF)',
+                        blockDelete ? Colors.amber.shade800 : const Color(0xFF333B48),
+                        () => setState(() => blockDelete = !blockDelete),
+                        height: 28,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
                 Row(
                   children: [
                     Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'))),
@@ -442,6 +519,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
+
+          // Column 2: DROs, Home, Feed & Spindle & Rapid Overrides
           Expanded(
             flex: 4,
             child: Container(
@@ -498,34 +577,66 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     ],
                   ),
                   const Spacer(),
+
+                  // Feed Rate, Rapid Override & Spindle Controls Panel
                   Container(
                     padding: const EdgeInsets.all(4),
-                    color: const Color(0xFF161920),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161920),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Column(
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        // Feed Rate Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Feed FRO: $feedOverride%', style: const TextStyle(fontSize: 11, color: Colors.greenAccent, fontFamily: 'monospace')),
+                            Text('Feed FRO: $feedOverride%', style: const TextStyle(fontSize: 10, color: Colors.greenAccent, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
                             Row(
                               children: [
-                                smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
+                                smallBtn('50%', () => setState(() => feedOverride = 50)),
                                 smallBtn('100%', () => setState(() => feedOverride = 100)),
-                                smallBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 10))),
+                                smallBtn('200%', () => setState(() => feedOverride = 200)),
+                                smallBtn('+', () => setState(() => feedOverride = math.min(300, feedOverride + 10))),
+                                smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
                               ],
                             ),
                           ],
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        const Divider(height: 4, color: Colors.white12),
+                        // Rapid Override Row (جديد)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Spindle: $spindleRpm RPM', style: const TextStyle(fontSize: 11, color: Colors.amberAccent, fontFamily: 'monospace')),
-                            classicMachBtn(
-                              spindleOn ? 'Spindle ON (F5)' : 'Spindle OFF (F5)',
-                              spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
-                              () => sendCommand('SPINDLE_TOGGLE'),
-                              height: 24,
+                            Text('Rapid: $rapidOverride%', style: const TextStyle(fontSize: 10, color: Colors.cyanAccent, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                            Row(
+                              children: [
+                                smallBtn('25%', () => setState(() => rapidOverride = 25)),
+                                smallBtn('50%', () => setState(() => rapidOverride = 50)),
+                                smallBtn('100%', () => setState(() => rapidOverride = 100)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 4, color: Colors.white12),
+                        // Spindle RPM Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Spindle: $spindleRpm RPM', style: const TextStyle(fontSize: 10, color: Colors.amberAccent, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                            Row(
+                              children: [
+                                smallBtn('12k', () => setState(() => spindleRpm = 12000)),
+                                smallBtn('+1k', () => setState(() => spindleRpm += 1000)),
+                                smallBtn('-1k', () => setState(() => spindleRpm = math.max(0, spindleRpm - 1000))),
+                                const SizedBox(width: 2),
+                                classicMachBtn(
+                                  spindleOn ? 'SPN ON' : 'SPN OFF',
+                                  spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
+                                  () => sendCommand('SPINDLE_TOGGLE'),
+                                  height: 22,
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -537,6 +648,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
+
+          // Column 3: Toolpath & Jog Controls
           Expanded(
             flex: 3,
             child: Column(
@@ -676,7 +789,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2), side: const BorderSide(color: Colors.white24)),
         ),
         child: Text(
@@ -692,10 +805,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 4, top: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         decoration: BoxDecoration(color: const Color(0xFF333B48), border: Border.all(color: Colors.white24)),
-        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
       ),
     );
   }
