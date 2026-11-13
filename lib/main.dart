@@ -456,6 +456,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
+  // --- الشاشة الأولى (Program Run) مطابقة تماماً دون أي تغيير ---
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -520,7 +521,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(width: 2),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
@@ -854,6 +855,315 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
+  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية ---
+  Widget buildMdiTab() {
+    return Padding(
+      padding: const EdgeInsets.all(4.0),
+      child: Row(
+        children: [
+          // القسم الأيمن: شاشات الـ DRO و أزرار الـ Home والـ Coordinates
+          Expanded(
+            flex: 4,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 38,
+                        child: classicMachBtn('R\nE\nF', Colors.teal.shade800, () => sendCommand('REF_ALL_HOME'), height: double.infinity),
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            droBox('X', droX, () => sendCommand('ZERO:X')),
+                            const SizedBox(height: 2),
+                            droBox('Y', droY, () => sendCommand('ZERO:Y')),
+                            const SizedBox(height: 2),
+                            droBox('Z', droZ, () => sendCommand('ZERO:Z')),
+                            const SizedBox(height: 2),
+                            droBox('A', droA, () => sendCommand('ZERO:A')),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: classicMachBtn('De-Ref\nAll Axes', const Color(0xFF333B48), () {}, height: 28),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: classicMachBtn(connected ? 'ONLINE' : 'OFFLINE', connected ? Colors.green.shade800 : Colors.blueGrey.shade800, connectToPC, height: 28),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: classicMachBtn(machineCoords ? 'Machine Coords' : 'To Go', machineCoords ? Colors.red.shade900 : const Color(0xFF333B48), () => setState(() => machineCoords = !machineCoords), height: 28),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                SizedBox(
+                  height: 60,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232731),
+                            border: Border.all(color: Colors.grey.shade700),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Local System Rotated', style: TextStyle(fontSize: 8, color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                              const Divider(height: 2, color: Colors.white24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('+0.00 Degrees', style: TextStyle(fontSize: 9, fontFamily: 'monospace')),
+                                  classicMachBtn('Zero', const Color(0xFF333B48), () {}, height: 18),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        flex: 5,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232731),
+                            border: Border.all(color: Colors.grey.shade700),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('TOOL', style: TextStyle(fontSize: 8, color: Colors.amber, fontWeight: FontWeight.bold)),
+                              const Divider(height: 2, color: Colors.white24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('$currentTool', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                                  const Text('Work Offset # 1', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          // القسم الأوسط: أزرار التحكم والـ Feed & Spindle
+          Expanded(
+            flex: 4,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF232731),
+                    border: Border.all(color: Colors.grey.shade700),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: classicMachBtn('Stop\n(Esc)', Colors.red.shade900, () => sendCommand('STOP'), height: 32)),
+                          const SizedBox(width: 2),
+                          Expanded(child: classicMachBtn('Load/Edit', const Color(0xFF333B48), openFile, height: 32)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Expanded(child: classicMachBtn('Start\nTeach', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 32)),
+                          const SizedBox(width: 2),
+                          Expanded(child: classicMachBtn('Stop\nTeach', Colors.amber.shade800, () => stopSimulation(), height: 32)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Expanded(child: classicMachBtn('Set Variable Position', const Color(0xFF333B48), () {}, height: 28)),
+                          const SizedBox(width: 2),
+                          Expanded(child: classicMachBtn('Goto Variable Position', const Color(0xFF333B48), () {}, height: 28)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // Feed Rate & Spindle Speed Blocks في شاشة MDI
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232731),
+                            border: Border.all(color: Colors.grey.shade700),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Feed Rate', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                              const Divider(height: 2, color: Colors.white24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('FRO %', style: TextStyle(fontSize: 8)),
+                                  Text('$feedOverride', style: const TextStyle(fontSize: 9, color: Colors.greenAccent)),
+                                ],
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('F', style: TextStyle(fontSize: 8)),
+                                  Text('${currentFeedRate.toStringAsFixed(0)}', style: const TextStyle(fontSize: 9, color: Colors.cyanAccent)),
+                                ],
+                              ),
+                              const Spacer(),
+                              Center(child: smallBtn('Reset', () => setState(() => feedOverride = 100))),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232731),
+                            border: Border.all(color: Colors.grey.shade700),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Spindle Speed', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.amber)),
+                              const Divider(height: 2, color: Colors.white24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('RPM', style: TextStyle(fontSize: 8)),
+                                  Text('${spindleRpm.toInt()}', style: const TextStyle(fontSize: 9, color: Colors.cyanAccent)),
+                                ],
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('S ov', style: TextStyle(fontSize: 8)),
+                                  Text('$spindleOverride%', style: const TextStyle(fontSize: 9, color: Colors.greenAccent)),
+                                ],
+                              ),
+                              const Spacer(),
+                              Center(child: smallBtn('Reset RPM', () => setState(() => spindleOverride = 100))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          // القسم الأيسر: شاشة التول باث الخاصة بـ MDI
+          Expanded(
+            flex: 4,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black,
+                border: Border.all(color: Colors.grey.shade700, width: 1.5),
+              ),
+              child: Stack(
+                children: [
+                  result == null
+                      ? const Center(child: Text('Toolpath Window', style: TextStyle(color: Colors.white24, fontSize: 10)))
+                      : CustomPaint(
+                          painter: Mach3ToolpathPainter(result!.points, simulatorIndex),
+                          child: const SizedBox.expand(),
+                        ),
+                  Positioned(
+                    top: 2,
+                    left: 2,
+                    child: Text('Tool:#$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- شاشة ToolPath (Alt-4) المخصصة ---
+  Widget buildFullToolpathTab() {
+    return Padding(
+      padding: const EdgeInsets.all(4.0),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF232731),
+                border: Border.all(color: Colors.grey.shade700),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Program Limits & Toolpath Options', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 10),
+                  classicMachBtn('Regen. Toolpath', Colors.teal.shade800, () => setState(() {}), height: 35),
+                  const SizedBox(height: 10),
+                  classicMachBtn('Display Mode', const Color(0xFF333B48), () {}, height: 35),
+                  const Spacer(),
+                  Text('Total Movements: ${result?.movements ?? 0}', style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                  Text('Total Distance: ${result?.distance.toStringAsFixed(2) ?? '0.00'} mm', style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black,
+                border: Border.all(color: Colors.grey.shade700, width: 1.5),
+              ),
+              child: result == null
+                  ? const Center(child: Text('No G-Code Loaded for Toolpath', style: TextStyle(color: Colors.white24)))
+                  : CustomPaint(
+                      painter: Mach3ToolpathPainter(result!.points, result!.points.length),
+                      child: const SizedBox.expand(),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget droBox(String axis, double value, VoidCallback onZero) {
     return Container(
       height: 26,
@@ -940,80 +1250,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // MDI View مرتبة ومستقلة بدون مساس بالشاشة الأولى
-  Widget buildMdiTab() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF232731),
-                border: Border.all(color: Colors.grey.shade700),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('MDI Command History & Execution', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                  const Divider(color: Colors.white24),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: mdiHistory.length,
-                      itemBuilder: (context, index) => ListTile(
-                        dense: true,
-                        title: Text(mdiHistory[index], style: const TextStyle(fontFamily: 'monospace', color: Colors.lightGreenAccent, fontSize: 12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: mdiController,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Color(0xFF00FF41)),
-                  decoration: const InputDecoration(
-                    hintText: 'Enter MDI Command (e.g. G0 X10 Y10)',
-                    hintStyle: TextStyle(color: Colors.white30, fontSize: 11),
-                    filled: true,
-                    fillColor: Colors.black,
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) {
-                      setState(() {
-                        mdiHistory.insert(0, val.trim().toUpperCase());
-                      });
-                      mdiController.clear();
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 6),
-              classicMachBtn('Execute', Colors.teal.shade800, () {
-                final val = mdiController.text.trim();
-                if (val.isNotEmpty) {
-                  setState(() {
-                    mdiHistory.insert(0, val.toUpperCase());
-                  });
-                  mdiController.clear();
-                }
-              }, height: 35),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildFullToolpathTab() => const Center(child: Text('Full Toolpath View'));
   Widget buildOffsetsTab() => const Center(child: Text('Offsets View'));
   Widget buildSettingsTab() => const Center(child: Text('Settings View'));
   Widget buildDiagnosticsTab() => const Center(child: Text('Diagnostics View'));
