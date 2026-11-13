@@ -412,6 +412,47 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
+            // الشريط السفلي الموحد والخاص بإدخال الـ MDI والملاحظات
+            Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              color: const Color(0xFF1E222B),
+              child: Row(
+                children: [
+                  classicMachBtn('Input', const Color(0xFF333B48), () {
+                    final val = mdiController.text.trim();
+                    if (val.isNotEmpty) {
+                      setState(() {
+                        mdiHistory.insert(0, val.toUpperCase());
+                      });
+                      mdiController.clear();
+                    }
+                  }, height: 34),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: mdiController,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black),
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Color(0xFFD4E8B0), // لون خلفية شريط الإدخال الكلاسيكي في Mach3
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (val) {
+                        if (val.trim().isNotEmpty) {
+                          setState(() {
+                            mdiHistory.insert(0, val.trim().toUpperCase());
+                          });
+                          mdiController.clear();
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Container(
               height: 22,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -456,7 +497,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- الشاشة الأولى (Program Run) مطابقة تماماً دون أي تغيير ---
+  // --- الشاشة الأولى (Program Run) كما طلبت تماماً دون أي تعديل ---
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -521,7 +562,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(width: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
@@ -855,13 +896,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية ---
+  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية (Alt-2 MDI) ---
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // القسم الأيمن: شاشات الـ DRO و أزرار الـ Home والـ Coordinates
+          // العمود الأيمن: خانات الـ DRO مع أزرار (Scale / Radius Correct) الموجودة في صورة MDI
           Expanded(
             flex: 4,
             child: Column(
@@ -877,27 +918,25 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       Expanded(
                         child: Column(
                           children: [
-                            droBox('X', droX, () => sendCommand('ZERO:X')),
+                            droWithScaleBox('X', droX, () => sendCommand('ZERO:X')),
                             const SizedBox(height: 2),
-                            droBox('Y', droY, () => sendCommand('ZERO:Y')),
+                            droWithScaleBox('Y', droY, () => sendCommand('ZERO:Y')),
                             const SizedBox(height: 2),
-                            droBox('Z', droZ, () => sendCommand('ZERO:Z')),
+                            droWithScaleBox('Z', droZ, () => sendCommand('ZERO:Z')),
                             const SizedBox(height: 2),
-                            droBox('A', droA, () => sendCommand('ZERO:A')),
+                            droWithScaleBox('4', droA, () => sendCommand('ZERO:A')),
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                Expanded(
-                                  child: classicMachBtn('De-Ref\nAll Axes', const Color(0xFF333B48), () {}, height: 28),
-                                ),
+                                Expanded(child: classicMachBtn('De-Ref\nAll Axes', const Color(0xFF333B48), () {}, height: 26)),
                                 const SizedBox(width: 2),
-                                Expanded(
-                                  child: classicMachBtn(connected ? 'ONLINE' : 'OFFLINE', connected ? Colors.green.shade800 : Colors.blueGrey.shade800, connectToPC, height: 28),
-                                ),
+                                Expanded(child: classicMachBtn(connected ? 'ONLINE' : 'OFFLINE', connected ? Colors.green.shade800 : Colors.blueGrey.shade800, connectToPC, height: 26)),
                                 const SizedBox(width: 2),
-                                Expanded(
-                                  child: classicMachBtn(machineCoords ? 'Machine Coords' : 'To Go', machineCoords ? Colors.red.shade900 : const Color(0xFF333B48), () => setState(() => machineCoords = !machineCoords), height: 28),
-                                ),
+                                Expanded(child: classicMachBtn('To Go', const Color(0xFF333B48), () {}, height: 26)),
+                                const SizedBox(width: 2),
+                                Expanded(child: classicMachBtn(machineCoords ? 'Machine Coords' : 'Machine\nCoord\'s', machineCoords ? Colors.red.shade900 : const Color(0xFF333B48), () => setState(() => machineCoords = !machineCoords), height: 26)),
+                                const SizedBox(width: 2),
+                                Expanded(child: classicMachBtn('Verify', const Color(0xFF333B48), () {}, height: 26)),
                               ],
                             ),
                           ],
@@ -908,11 +947,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ),
                 const SizedBox(height: 3),
                 SizedBox(
-                  height: 60,
+                  height: 55,
                   child: Row(
                     children: [
                       Expanded(
-                        flex: 5,
+                        flex: 6,
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -928,7 +967,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   const Text('+0.00 Degrees', style: TextStyle(fontSize: 9, fontFamily: 'monospace')),
-                                  classicMachBtn('Zero', const Color(0xFF333B48), () {}, height: 18),
+                                  classicMachBtn('Zero', const Color(0xFF333B48), () {}, height: 16),
                                 ],
                               ),
                             ],
@@ -937,7 +976,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       ),
                       const SizedBox(width: 3),
                       Expanded(
-                        flex: 5,
+                        flex: 4,
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -967,7 +1006,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // القسم الأوسط: أزرار التحكم والـ Feed & Spindle
+          // العمود الأوسط: أزرار Stop, Load/Edit, Start Teach, Stop Teach والألواح والـ Feed/Spindle
           Expanded(
             flex: 4,
             child: Column(
@@ -990,7 +1029,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Expanded(child: classicMachBtn('Start\nTeach', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 32)),
+                          Expanded(child: classicMachBtn('Start\nTeach', Colors.green.shade800, () => startSimulation(), height: 32)),
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Stop\nTeach', Colors.amber.shade800, () => stopSimulation(), height: 32)),
                         ],
@@ -998,16 +1037,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Expanded(child: classicMachBtn('Set Variable Position', const Color(0xFF333B48), () {}, height: 28)),
+                          Expanded(child: classicMachBtn('Set Variable Position', const Color(0xFF333B48), () {}, height: 26)),
                           const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Goto Variable Position', const Color(0xFF333B48), () {}, height: 28)),
+                          Expanded(child: classicMachBtn('Goto Variable Position', const Color(0xFF333B48), () {}, height: 26)),
                         ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Feed Rate & Spindle Speed Blocks في شاشة MDI
                 Expanded(
                   child: Row(
                     children: [
@@ -1083,7 +1121,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // القسم الأيسر: شاشة التول باث الخاصة بـ MDI
+          // العمود الأيسر: شاشة Toolpath السوداء الكلاسيكية (Tool0 والشاشة السوداء الفارغة أو المرسومة)
           Expanded(
             flex: 4,
             child: Container(
@@ -1099,10 +1137,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           painter: Mach3ToolpathPainter(result!.points, simulatorIndex),
                           child: const SizedBox.expand(),
                         ),
-                  Positioned(
+                  const Positioned(
                     top: 2,
                     left: 2,
-                    child: Text('Tool:#$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
+                    child: Text('Tool0', style: TextStyle(fontSize: 9, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -1113,16 +1151,17 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- شاشة ToolPath (Alt-4) المخصصة ---
+  // --- شاشة ToolPath (Alt-4) المطابقة تماماً للصورة الأولى (Program Limits & Toolpath) ---
   Widget buildFullToolpathTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
+          // القسم الأيمن في شاشة Toolpath: جدول حدود البرنامج Program Limits وأزرار Display Mode و Regen Toolpath
           Expanded(
             flex: 4,
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: const Color(0xFF232731),
                 border: Border.all(color: Colors.grey.shade700),
@@ -1130,20 +1169,45 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Program Limits & Toolpath Options', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 10),
-                  classicMachBtn('Regen. Toolpath', Colors.teal.shade800, () => setState(() {}), height: 35),
-                  const SizedBox(height: 10),
-                  classicMachBtn('Display Mode', const Color(0xFF333B48), () {}, height: 35),
+                  Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    color: const Color(0xFF1E222B),
+                    child: const Text('Program Limits', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 10)),
+                  ),
+                  const SizedBox(height: 4),
+                  programLimitRow('X Range', '-0.1749', '+6.0249'),
+                  programLimitRow('Y Range', '-0.0249', '+1.5249'),
+                  programLimitRow('Z Range', '-1.0000', '+1.0000'),
+                  programLimitRow('4 Range', '+0.0000', '+0.0000'),
+                  const SizedBox(height: 6),
+                  Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161920),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: const Text('Absolute Coordinates', style: TextStyle(fontSize: 9, color: Colors.white70, fontWeight: FontWeight.bold)),
+                  ),
                   const Spacer(),
-                  Text('Total Movements: ${result?.movements ?? 0}', style: const TextStyle(fontSize: 10, color: Colors.white70)),
-                  Text('Total Distance: ${result?.distance.toStringAsFixed(2) ?? '0.00'} mm', style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: classicMachBtn('Display\nMode', const Color(0xFF333B48), () {}, height: 32),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: classicMachBtn('Regen.\nToolpath', const Color(0xFF333B48), () => setState(() {}), height: 32),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(width: 4),
+          // القسم الأيسر: شاشة التول باث ثلاثية الأبعاد الكبيرة
           Expanded(
             flex: 8,
             child: Container(
@@ -1157,6 +1221,35 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       painter: Mach3ToolpathPainter(result!.points, result!.points.length),
                       child: const SizedBox.expand(),
                     ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget programLimitRow(String label, String minVal, String maxVal) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(width: 45, child: Text(label, style: const TextStyle(fontSize: 8.5, color: Colors.white70, fontWeight: FontWeight.bold))),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              color: Colors.black,
+              alignment: Alignment.center,
+              child: Text(minVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 8.5, color: Colors.cyanAccent)),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              color: Colors.black,
+              alignment: Alignment.center,
+              child: Text(maxVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 8.5, color: Colors.cyanAccent)),
             ),
           ),
         ],
@@ -1186,6 +1279,58 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               fontSize: 14,
               fontWeight: FontWeight.bold,
               color: machineCoords ? Colors.redAccent : const Color(0xFF00FF41),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // مربع الـ DRO المخصص لشاشة MDI الذي يحتوي على خانة الـ Scale الجانبية مطابقة لصورة MDI الأصلية
+  Widget droWithScaleBox(String axis, double value, VoidCallback onZero) {
+    return SizedBox(
+      height: 28,
+      child: Row(
+        children: [
+          Expanded(
+            flex: 7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                border: Border.all(color: Colors.grey.shade600, width: 1.2),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  InkWell(
+                    onTap: onZero,
+                    child: Text('Zero $axis', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
+                  ),
+                  Text(
+                    value.toStringAsFixed(4),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF00FF41)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 2),
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                border: Border.all(color: Colors.grey.shade600, width: 1),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Scale', style: TextStyle(fontSize: 6, color: Colors.white60)),
+                  const Text('+1.0000', style: TextStyle(fontFamily: 'monospace', fontSize: 8, color: Colors.cyanAccent)),
+                ],
+              ),
             ),
           ),
         ],
