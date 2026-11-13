@@ -412,47 +412,48 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
-            // شريط الإدخال المخصص تماماً لصورة MDI الأصلية في الأسفل
-            Container(
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              color: const Color(0xFF1E222B),
-              child: Row(
-                children: [
-                  classicMachBtn('Input', const Color(0xFF333B48), () {
-                    final val = mdiController.text.trim();
-                    if (val.isNotEmpty) {
-                      setState(() {
-                        mdiHistory.insert(0, val.toUpperCase());
-                      });
-                      mdiController.clear();
-                    }
-                  }, height: 32),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: TextField(
-                      controller: mdiController,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black, fontWeight: FontWeight.bold),
-                      decoration: const InputDecoration(
-                        filled: true,
-                        fillColor: Color(0xFFE3F4C7), // لون خانة الإدخال الأخضر الفاتح الكلاسيكي
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        border: OutlineInputBorder(),
+            // شريط إدخال MDI يظهر حصرياً في شاشة MDI (Index 1) مطابق للصورة الثانية تماماً
+            if (currentTab == 1)
+              Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                color: const Color(0xFF1E222B),
+                child: Row(
+                  children: [
+                    classicMachBtn('Input', const Color(0xFF333B48), () {
+                      final val = mdiController.text.trim();
+                      if (val.isNotEmpty) {
+                        setState(() {
+                          mdiHistory.insert(0, val.toUpperCase());
+                        });
+                        mdiController.clear();
+                      }
+                    }, height: 32),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: TextField(
+                        controller: mdiController,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black, fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          filled: true,
+                          fillColor: Color(0xFFE3F4C7),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (val) {
+                          if (val.trim().isNotEmpty) {
+                            setState(() {
+                              mdiHistory.insert(0, val.trim().toUpperCase());
+                            });
+                            mdiController.clear();
+                          }
+                        },
                       ),
-                      onSubmitted: (val) {
-                        if (val.trim().isNotEmpty) {
-                          setState(() {
-                            mdiHistory.insert(0, val.trim().toUpperCase());
-                          });
-                          mdiController.clear();
-                        }
-                      },
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
             Container(
               height: 22,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -497,7 +498,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- الشاشة الأولى (Program Run) كما طلبت تماماً دون أي مساس ---
+  // --- الشاشة الأولى (Program Run) سليمة ونظيفة تماماً كما طلبت بدون أي تعديل ---
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -896,13 +897,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية مع خانات Scale وأزرار التحكم الجانبية ---
+  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية ---
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // العمود الأيمن: خانات الـ DRO مع أزرار (Scale / Radius Correct)
           Expanded(
             flex: 4,
             child: Column(
@@ -1006,7 +1006,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الأوسط: أزرار Stop, Load/Edit, Start Teach, Stop Teach
           Expanded(
             flex: 4,
             child: Column(
@@ -1121,7 +1120,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الأيسر: شاشة Toolpath السوداء الكلاسيكية (Tool0)
           Expanded(
             flex: 4,
             child: Container(
@@ -1151,7 +1149,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- شاشة ToolPath (Alt-4) المطابقة تماماً للصورة الأولى (Program Limits & Toolpath) ---
+  // --- شاشة ToolPath (Alt-4) المطابقة تماماً للصورة الأولى ---
   Widget buildFullToolpathTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
