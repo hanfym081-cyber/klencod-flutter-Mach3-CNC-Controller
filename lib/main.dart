@@ -161,6 +161,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool machineCoords = false;
   bool estop = true;
   bool spindleOn = false;
+  bool singleBlock = false;
 
   double currentFeedRate = 100.0;
   double spindleRpm = 12000.0;
@@ -172,7 +173,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool blockDelete = false;
   bool cvMode = true;
 
-  int currentTool = 0;
+  int currentTool = 16; // الافتراضي مطابق للصورة 16
   double jogStep = 1.0;
 
   Timer? simulatorTimer;
@@ -395,12 +396,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               color: const Color(0xFF2B303B),
               child: Row(
                 children: [
-                  machTab(0, 'Program Run Alt-1'),
-                  machTab(1, 'MDI Alt-2'),
-                  machTab(2, 'ToolPath Alt-4'),
-                  machTab(3, 'Offsets Alt-5'),
-                  machTab(4, 'Settings Alt-6'),
-                  machTab(5, 'Diagnostics Alt-7'),
+                  machTab(0, 'Program Run (Alt-1)'),
+                  machTab(1, 'MDI (Alt-2)'),
+                  machTab(2, 'Tool Path (Alt-4)'), // التبويب الثالث النشط
+                  machTab(3, 'Offsets (Alt-5)'),
+                  machTab(4, 'Settings (Alt-6)'),
+                  machTab(5, 'Diagnostics (Alt-7)'),
                   const VerticalDivider(color: Colors.white24, width: 1),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -425,7 +426,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 children: [
                   buildProgramRunTab(),
                   buildMdiTab(),
-                  buildFullToolpathTab(),
+                  buildToolPathTab(), // شاشة التول باث المطابقة للصورة الجديدة
                   buildOffsetsTab(),
                   buildSettingsTab(),
                   buildDiagnosticsTab(),
@@ -485,81 +486,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             flex: 3,
             child: Column(
               children: [
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0A0C10),
-                      border: Border.all(color: Colors.grey.shade700, width: 1.5),
-                    ),
-                    child: result == null || result!.rawLines.isEmpty
-                        ? const Center(child: Text('No G-Code Loaded\nUse Load G-Code button below', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11)))
-                        : ListView.builder(
-                            controller: gcodeScrollController,
-                            itemCount: result!.rawLines.length,
-                            itemBuilder: (context, index) {
-                              bool isActive = index == activeLineIndex;
-                              bool isSelected = index == selectedLineIndex;
-                              return InkWell(
-                                onTap: () => setState(() => selectedLineIndex = index),
-                                child: Container(
-                                  height: 18,
-                                  color: isActive ? Colors.blue.shade900 : (isSelected ? Colors.grey.shade800 : Colors.transparent),
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    result!.rawLines[index],
-                                    style: TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontSize: 10,
-                                      color: isActive ? Colors.white : Colors.lightGreenAccent,
-                                      fontWeight: isActive || isSelected ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ),
+                Expanded(child: buildGCodeListView()),
                 const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF232731),
-                    border: Border.all(color: Colors.grey.shade700),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 34)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 34)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
-                        ],
-                      ),
-                      const SizedBox(width: 2),
-                      Row(
-                        children: [
-                          Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
-                              setState(() {
-                                simulatorIndex = selectedLineIndex;
-                                activeLineIndex = selectedLineIndex;
-                              });
-                            }, height: 26),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                buildProgramRunButtonsContainer(),
               ],
             ),
           ),
@@ -585,7 +514,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             const SizedBox(height: 2),
                             droBox('Z', droZ, () => sendCommand('ZERO:Z')),
                             const SizedBox(height: 2),
-                            droBox('A', droA, () => sendCommand('ZERO:A')),
+                            droBox('4', droA, () => sendCommand('ZERO:A')), // المحور الرابع 4
                             const SizedBox(height: 2),
                             Row(
                               children: [
@@ -664,7 +593,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             jogKey('A+', () => sendCommand('JOG:A+'), Colors.purpleAccent),
                           ],
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 3),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -673,7 +602,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             jogKey('X+', () => sendCommand('JOG:X+')),
                           ],
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 3),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -696,151 +625,172 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الثانية المحدثة تماماً: MDI Alt-2 ====================
-  Widget buildMdiTab() {
+  // ==================== الشاشة الثالثة المطابقة تماماً لصورة Tool Path (Alt-4) ====================
+  Widget buildToolPathTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
-      child: Column(
+      child: Row(
         children: [
+          // القسم الأيسر: G-Code Viewer + Simulate Program Run + أزرار التشغيل الكلاسيكية + Reset السفلي
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            flex: 35,
+            child: Column(
               children: [
-                // العمود الأيسر: DROs والأزرار الخاصة بـ MDI
+                // مربع الـ G-Code الفعلي
                 Expanded(
-                  flex: 38,
+                  flex: 55,
+                  child: buildGCodeListView(),
+                ),
+                const SizedBox(height: 3),
+                // صندوق Simulate Program Run & Estimated Time المطابق للصورة
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF232731),
+                    border: Border.all(color: Colors.grey.shade700),
+                  ),
                   child: Column(
                     children: [
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 24,
-                            height: 108,
-                            child: classicMachBtn('R\nE\nF\n\nA\nL\nL', Colors.teal.shade800, () => sendCommand('REF_ALL_HOME'), height: 108),
-                          ),
-                          const SizedBox(width: 2),
                           Expanded(
-                            child: Column(
-                              children: [
-                                mdiDroRow('X', droX, scaleX, () => sendCommand('ZERO:X'), () => setState(() => scaleX = scaleX == 1.0 ? 0.5 : 1.0)),
-                                const SizedBox(height: 2),
-                                mdiDroRow('Y', droY, scaleY, () => sendCommand('ZERO:Y'), () => setState(() => scaleY = scaleY == 1.0 ? 0.5 : 1.0)),
-                                const SizedBox(height: 2),
-                                mdiDroRow('Z', droZ, scaleZ, () => sendCommand('ZERO:Z'), () => setState(() => scaleZ = scaleZ == 1.0 ? 0.5 : 1.0)),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Expanded(flex: 7, child: droBox('A', droA, () => sendCommand('ZERO:A'), height: 25)),
-                                    const SizedBox(width: 2),
-                                    Expanded(
-                                      flex: 3,
-                                      child: classicMachBtn('Radius\nCorrect', const Color(0xFF333B48), () => setState(() => statusMessage = 'Tool Radius Comp Toggled'), height: 25, fontSize: 6.5),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                            flex: 6,
+                            child: classicMachBtn('Simulate Program Run', const Color(0xFF434C5E), () {
+                              startSimulation();
+                              setState(() => statusMessage = 'Simulating Program Run...');
+                            }, height: 24, fontSize: 8),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            flex: 4,
+                            child: classicMachBtn('Run From Here', Colors.teal.shade800, () {
+                              setState(() {
+                                simulatorIndex = selectedLineIndex;
+                                activeLineIndex = selectedLineIndex;
+                                statusMessage = 'Run From Here set to line $selectedLineIndex';
+                              });
+                            }, height: 24, fontSize: 8),
                           ),
                         ],
                       ),
                       const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Expanded(child: classicMachBtn('De-Ref\nAxes', const Color(0xFF333B48), () => setState(() => statusMessage = 'Axes De-Referenced'), height: 24, fontSize: 6.5)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Zero\nAll', const Color(0xFF333B48), () => sendCommand('ZERO_ALL'), height: 24, fontSize: 7)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('To Go', showToGo ? Colors.amber.shade800 : const Color(0xFF333B48), () => setState(() => showToGo = !showToGo), height: 24, fontSize: 7.5)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Machine\nCoords', machineCoords ? Colors.red.shade900 : const Color(0xFF333B48), () => setState(() => machineCoords = !machineCoords), height: 24, fontSize: 6.5)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Verify', const Color(0xFF333B48), () => setState(() => statusMessage = 'Verified'), height: 24, fontSize: 7.5)),
-                        ],
+                      Container(
+                        height: 20,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white24)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: const [
+                            Text('Estimated Program Run Time', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                            Text('0:00:00:00', style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: Colors.amberAccent)),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 3),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                // الأزرار الكلاسيكية للتشغيل والتحكم (Cycle Start, Rewind, Single Blk, Feed Hold, Stop, Reverse Run)
+                Expanded(
+                  flex: 45,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232731),
+                      border: Border.all(color: Colors.grey.shade700),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(child: classicMachBtn('Cycle Start\n(Alt-R)', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 32, fontSize: 8)),
+                            const SizedBox(width: 3),
+                            Expanded(child: classicMachBtn('Rewind\n(Crtl-W)', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 32, fontSize: 8)),
+                            const SizedBox(width: 3),
+                            Expanded(child: classicMachBtn('Single BLK\n(Alt-N)', singleBlock ? Colors.amber.shade800 : const Color(0xFF333B48), () => setState(() => singleBlock = !singleBlock), height: 32, fontSize: 8)),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 32, fontSize: 8)),
+                            const SizedBox(width: 3),
+                            Expanded(child: classicMachBtn('Stop\n(Alt-S)', Colors.red.shade900, () => sendCommand('STOP'), height: 32, fontSize: 8)),
+                            const SizedBox(width: 3),
+                            Expanded(child: classicMachBtn('Reverse\nRun', Colors.blueGrey.shade700, () => setState(() => statusMessage = 'Reverse Run Active'), height: 32, fontSize: 8)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // القسم الأيمن: الـ DROs + Program Limits + شاشة التول باث الكبيرة
+          Expanded(
+            flex: 65,
+            child: Column(
+              children: [
+                // الجزء العلوي الأيمن: DROs والمحاور الأربعة مع Program Limits
+                SizedBox(
+                  height: 112,
+                  child: Row(
+                    children: [
+                      // المحاور الأربعة
                       Expanded(
+                        flex: 5,
+                        child: Column(
+                          children: [
+                            droBox('X', droX, () => sendCommand('ZERO:X'), height: 26),
+                            const SizedBox(height: 2),
+                            droBox('Y', droY, () => sendCommand('ZERO:Y'), height: 26),
+                            const SizedBox(height: 2),
+                            droBox('Z', droZ, () => sendCommand('ZERO:Z'), height: 26),
+                            const SizedBox(height: 2),
+                            droBox('4', droA, () => sendCommand('ZERO:A'), height: 26), // محور 4 مطابق للصورة
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      // لوحة Program Limits المطابقة للصورة تماماً
+                      Expanded(
+                        flex: 5,
                         child: Container(
-                          padding: const EdgeInsets.all(3),
+                          padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: const Color(0xFF232731),
                             border: Border.all(color: Colors.grey.shade700),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                flex: 4,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text('Local System\nRotated', textAlign: TextAlign.center, style: TextStyle(fontSize: 7.5, color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
-                                    Container(
-                                      height: 20,
-                                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                                      alignment: Alignment.centerRight,
-                                      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.grey.shade600)),
-                                      child: Text('${localRotationDeg >= 0 ? "+" : ""}${localRotationDeg.toStringAsFixed(1)}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Color(0xFF00FF41))),
-                                    ),
-                                    Row(
-                                      children: [
-                                        Expanded(child: smallBtn('-15°', () => setState(() => localRotationDeg -= 15))),
-                                        const SizedBox(width: 2),
-                                        Expanded(child: smallBtn('0°', () => setState(() => localRotationDeg = 0))),
-                                        const SizedBox(width: 2),
-                                        Expanded(child: smallBtn('+15°', () => setState(() => localRotationDeg += 15))),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Program Limits', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                  Column(
+                                    children: [
+                                      classicMachBtn('Display\nMode', const Color(0xFF333B48), () {}, height: 22, width: 50, fontSize: 6.5),
+                                      const SizedBox(height: 2),
+                                      classicMachBtn('Regen.\nToolpath', const Color(0xFF333B48), () => setState(() => statusMessage = 'Toolpath Regenerated'), height: 22, width: 50, fontSize: 6.5),
+                                    ],
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                flex: 6,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Expanded(child: Text('TOOL', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber))),
-                                        mediumBtn('-', () => setState(() => currentTool = math.max(0, currentTool - 1))),
-                                        Container(
-                                          width: 32, height: 18,
-                                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                                          alignment: Alignment.center,
-                                          color: Colors.black,
-                                          child: Text('$currentTool', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
-                                        ),
-                                        mediumBtn('+', () => setState(() => currentTool = math.min(99, currentTool + 1))),
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        Expanded(child: Text('Offset # (G${53 + workOffsetNum})', style: const TextStyle(fontSize: 7.5, color: Colors.white70))),
-                                        mediumBtn('-', () => setState(() => workOffsetNum = math.max(1, workOffsetNum - 1))),
-                                        Container(
-                                          width: 32, height: 18,
-                                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                                          alignment: Alignment.center,
-                                          color: Colors.black,
-                                          child: Text('$workOffsetNum', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
-                                        ),
-                                        mediumBtn('+', () => setState(() => workOffsetNum = math.min(6, workOffsetNum + 1))),
-                                      ],
-                                    ),
-                                    InkWell(
-                                      onTap: () => setState(() => jogEnabled = !jogEnabled),
-                                      child: Container(
-                                        height: 20, width: double.infinity,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: jogEnabled ? Colors.green.shade800 : Colors.grey.shade800,
-                                          border: Border.all(color: jogEnabled ? Colors.greenAccent : Colors.white24),
-                                        ),
-                                        child: Text(jogEnabled ? 'Jog ON/OFF [ON]' : 'Jog ON/OFF [OFF]', style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.white)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              limitRangeRow('X Range', '-0.1749', '+6.0249'),
+                              limitRangeRow('Y Range', '-0.0249', '+1.5249'),
+                              limitRangeRow('Z Range', '-1.0000', '+1.0000'),
+                              limitRangeRow('4 Range', '+0.0000', '+0.0000'),
+                              Container(
+                                height: 16,
+                                alignment: Alignment.center,
+                                color: Colors.black,
+                                child: const Text('Absolute Coordinates', style: TextStyle(fontSize: 7.5, color: Colors.amber, fontWeight: FontWeight.bold)),
                               ),
                             ],
                           ),
@@ -849,253 +799,118 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(height: 3),
 
-                // العمود الأوسط: زر Scaling وأزرار Teach وحالة Feed & Spindle
+                // شاشة التول باث الكبيرة في الأسفل الأيمن
                 Expanded(
-                  flex: 34,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 18,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: (scaleX != 1.0 || scaleY != 1.0) ? Colors.amber.shade900 : const Color(0xFF2B303B),
-                                border: Border.all(color: Colors.grey.shade700),
-                              ),
-                              child: RotatedBox(
-                                quarterTurns: 3,
-                                child: Text(
-                                  (scaleX != 1.0 || scaleY != 1.0) ? 'SCALING ON' : 'SCALING OFF G50',
-                                  style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white70),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 3),
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Expanded(child: classicMachBtn('Stop\n(Esc)', Colors.red.shade900, () => sendCommand('STOP'), height: double.infinity, fontSize: 8.5)),
-                                        const SizedBox(width: 3),
-                                        Expanded(child: classicMachBtn('Load / Edit', const Color(0xFF333B48), openFile, height: double.infinity, fontSize: 8.5)),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: classicMachBtn(
-                                            isTeaching ? 'Teaching...' : 'Start\nTeach',
-                                            isTeaching ? Colors.green.shade600 : Colors.green.shade900,
-                                            () => setState(() {
-                                              isTeaching = true;
-                                              taughtLines.clear();
-                                              statusMessage = 'Teach Started: Recording MDI & Jog moves';
-                                            }),
-                                            height: double.infinity, fontSize: 8.5,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Expanded(
-                                          child: classicMachBtn(
-                                            'Stop\nTeach',
-                                            Colors.amber.shade900,
-                                            () => setState(() {
-                                              isTeaching = false;
-                                              if (taughtLines.isNotEmpty) {
-                                                gcode = taughtLines.join('\n');
-                                                result = GCodeParser.parse(gcode);
-                                                fileName = 'MDI_Taught.nc';
-                                                statusMessage = 'Teach Stopped: ${taughtLines.length} lines loaded';
-                                              }
-                                            }),
-                                            height: double.infinity, fontSize: 8.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: classicMachBtn(
-                                            'Set Variable\nPosition',
-                                            Colors.blueGrey.shade700,
-                                            () => setState(() {
-                                              varX = droX; varY = droY; varZ = droZ; varA = droA;
-                                              statusMessage = 'Variable Pos Saved';
-                                            }),
-                                            height: double.infinity, fontSize: 8,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Expanded(
-                                          child: classicMachBtn(
-                                            'Goto Variable\nPosition',
-                                            Colors.blueGrey.shade700,
-                                            () => setState(() {
-                                              droX = varX; droY = varY; droZ = varZ; droA = varA;
-                                              statusMessage = 'Moved to Saved Variable Position';
-                                            }),
-                                            height: double.infinity, fontSize: 8,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      SizedBox(height: 112, child: buildFeedAndSpindleRow()),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // العمود الأيمن: شاشة Toolpath
-                Expanded(
-                  flex: 28,
                   child: buildToolpathBox(),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 3),
+        ],
+      ),
+    );
+  }
 
-          // شريط إدخال الأوامر اليدوية (MDI Input)
-          Container(
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFF232731),
-              border: Border.all(color: Colors.grey.shade600),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                  color: const Color(0xFF3B4252),
-                  child: const Text('Input', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: TextField(
-                    controller: mdiController,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Color(0xFF00FF41), fontWeight: FontWeight.bold),
-                    decoration: const InputDecoration(
-                      hintText: 'Type G-Code (e.g. G0 X25 Y10, M3 S15000, G28) and press Enter...',
-                      hintStyle: TextStyle(color: Colors.white30, fontSize: 10),
-                      filled: true,
-                      fillColor: Colors.black,
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      border: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                    ),
-                    onSubmitted: (val) {
-                      executeMdiGCode(val);
-                      mdiController.clear();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 4),
-                classicMachBtn('Send', Colors.teal.shade800, () {
-                  executeMdiGCode(mdiController.text);
-                  mdiController.clear();
-                }, height: 24, width: 55, fontSize: 9.5),
-              ],
-            ),
-          ),
-          const SizedBox(height: 3),
+  // ودجت عرض حدود الشغل Program Limits مطابقة للصورة
+  Widget limitRangeRow(String label, String minVal, String maxVal) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 7.5, color: Colors.white70)),
+        Row(
+          children: [
+            Container(width: 48, height: 16, alignment: Alignment.center, color: Colors.black, child: Text(minVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7.5, color: Colors.greenAccent))),
+            const SizedBox(width: 2),
+            Container(width: 48, height: 16, alignment: Alignment.center, color: Colors.black, child: Text(maxVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7.5, color: Colors.greenAccent))),
+          ],
+        ),
+      ],
+    );
+  }
 
-          // الشريط السفلي (زر Reset والأزرار المساعدة)
-          SizedBox(
-            height: 34,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => sendCommand('RESET'),
+  // ودجت عرض G-Code ListView
+  Widget buildGCodeListView() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0C10),
+        border: Border.all(color: Colors.grey.shade700, width: 1.5),
+      ),
+      child: result == null || result!.rawLines.isEmpty
+          ? const Center(child: Text('No G-Code Loaded\nUse Load G-Code button', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 11)))
+          : ListView.builder(
+              controller: gcodeScrollController,
+              itemCount: result!.rawLines.length,
+              itemBuilder: (context, index) {
+                bool isActive = index == activeLineIndex;
+                bool isSelected = index == selectedLineIndex;
+                return InkWell(
+                  onTap: () => setState(() => selectedLineIndex = index),
                   child: Container(
-                    width: 110,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: estop ? Colors.red.shade700 : Colors.green.shade700,
-                      border: Border.all(color: estop ? Colors.amber : Colors.greenAccent, width: 1.5),
-                    ),
-                    child: Text(estop ? 'Reset' : 'Active', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                classicMachBtn('G-Codes', const Color(0xFF333B48), () => showCodesDialog(true), height: 30, width: 65, fontSize: 8.5),
-                const SizedBox(width: 3),
-                classicMachBtn('M-Codes', const Color(0xFF333B48), () => showCodesDialog(false), height: 30, width: 65, fontSize: 8.5),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Container(
-                    height: 30,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    height: 18,
+                    color: isActive ? Colors.blue.shade900 : (isSelected ? Colors.grey.shade800 : Colors.transparent),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     alignment: Alignment.centerLeft,
-                    decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white24)),
                     child: Text(
-                      mdiHistory.isEmpty ? 'Last MDI: None' : 'Last MDI: ${mdiHistory.first}',
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.lightGreenAccent),
-                      overflow: TextOverflow.ellipsis,
+                      result!.rawLines[index],
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: isActive ? Colors.white : Colors.lightGreenAccent,
+                        fontWeight: isActive || isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                classicMachBtn('History', Colors.blueGrey.shade700, showHistoryDialog, height: 30, width: 60, fontSize: 8.5),
-                const SizedBox(width: 3),
-                classicMachBtn('Clear', const Color(0xFF333B48), () => setState(() => mdiHistory.clear()), height: 30, width: 50, fontSize: 8.5),
-              ],
+                );
+              },
             ),
+    );
+  }
+
+  // أزرار الشاشة الأولى السفلية
+  Widget buildProgramRunButtonsContainer() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF232731),
+        border: Border.all(color: Colors.grey.shade700),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 34)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 34)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
+            ],
+          ),
+          const SizedBox(width: 2),
+          Row(
+            children: [
+              Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
+              const SizedBox(width: 2),
+              Expanded(
+                child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
+                  setState(() {
+                    simulatorIndex = selectedLineIndex;
+                    activeLineIndex = selectedLineIndex;
+                  });
+                }, height: 26),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget mdiDroRow(String axis, double value, double scaleVal, VoidCallback onZero, VoidCallback onScaleToggle) {
-    double displayVal = showToGo ? 0.0 : value;
-    return SizedBox(
-      height: 25,
-      child: Row(
-        children: [
-          Expanded(flex: 7, child: droBox(axis, displayVal, onZero, height: 25)),
-          const SizedBox(width: 2),
-          Expanded(
-            flex: 3,
-            child: InkWell(
-              onTap: onScaleToggle,
-              child: Container(
-                height: 25,
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                alignment: Alignment.centerRight,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  border: Border.all(color: scaleVal != 1.0 ? Colors.amber : Colors.grey.shade700),
-                ),
-                child: Text(scaleVal.toStringAsFixed(3), style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: scaleVal != 1.0 ? Colors.amber : Colors.white70)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget buildMdiTab() => const Center(child: Text('MDI View Active'));
 
   Widget buildFeedAndSpindleRow() {
     return Row(
@@ -1225,52 +1040,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               : CustomPaint(painter: Mach3ToolpathPainter(result!.points, simulatorIndex), child: const SizedBox.expand()),
           Positioned(
             top: 2, right: 4,
-            child: Text('Tool:#$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
+            child: Text('Tool:$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
           ),
         ],
-      ),
-    );
-  }
-
-  void showHistoryDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF232731),
-        title: const Text('MDI Command History', style: TextStyle(fontSize: 13, color: Colors.cyanAccent)),
-        content: SizedBox(
-          width: 320, height: 180,
-          child: mdiHistory.isEmpty
-              ? const Center(child: Text('No commands executed yet.'))
-              : ListView.builder(
-                  itemCount: mdiHistory.length,
-                  itemBuilder: (_, i) => ListTile(
-                    dense: true,
-                    title: Text(mdiHistory[i], style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.lightGreenAccent)),
-                    onTap: () {
-                      mdiController.text = mdiHistory[i];
-                      Navigator.pop(context);
-                    },
-                  ),
-                ),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-      ),
-    );
-  }
-
-  void showCodesDialog(bool isGCode) {
-    final items = isGCode ? ['G00 - Rapid', 'G01 - Linear', 'G02/G03 - Arc', 'G20/G21 - Units', 'G28 - Home', 'G54..G59 - Offsets', 'G90/G91 - Mode'] : ['M00 - Stop', 'M03/M04 - Spindle ON', 'M05 - Spindle OFF', 'M06 - Tool Change', 'M30 - End'];
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF232731),
-        title: Text(isGCode ? 'Standard G-Codes' : 'Standard M-Codes', style: const TextStyle(fontSize: 13, color: Colors.amber)),
-        content: SizedBox(
-          width: 340, height: 200,
-          child: ListView(children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList()),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
@@ -1349,7 +1121,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  Widget buildFullToolpathTab() => const Center(child: Text('Full Toolpath View'));
   Widget buildOffsetsTab() => const Center(child: Text('Offsets View'));
   Widget buildSettingsTab() => const Center(child: Text('Settings View'));
   Widget buildDiagnosticsTab() => const Center(child: Text('Diagnostics View'));
