@@ -159,7 +159,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   Timer? simulatorTimer;
   int simulatorIndex = 0;
   int activeLineIndex = -1;
-  int selectedLineIndex = 0; // السطر المحدد بواسطة Set Next Line
+  int selectedLineIndex = 0; // السطر المحدد بواسطة المستخدم
   
   final ScrollController gcodeScrollController = ScrollController();
   final TextEditingController mdiController = TextEditingController();
@@ -372,7 +372,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     child: Text('Mill-> G15 G17 G21 G90 G54', style: TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.amberAccent)),
                   ),
                   const Spacer(),
-                  // مؤشر العدة الحالية في الشريط العلوي لسهولة المتابعة
+                  // عرض رقم العدة في الشريط العلوي
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     margin: const EdgeInsets.only(right: 6),
@@ -473,7 +473,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               bool isActive = index == activeLineIndex;
                               bool isSelected = index == selectedLineIndex;
                               return InkWell(
-                                onTap: () => setState(() => selectedLineIndex = index), // تحديد السطر عند النقر عليه
+                                onTap: () => setState(() => selectedLineIndex = index), // اختيار السطر عند النقر
                                 child: Container(
                                   height: 18,
                                   color: isActive ? Colors.blue.shade900 : (isSelected ? Colors.grey.shade800 : Colors.transparent),
@@ -512,14 +512,14 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(width: 2),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
                           const SizedBox(width: 2),
-                          // تفعيل زر Set Next Line لنقل مؤشر المحاكاة للسطر المحدد
+                          // تفعيل زر Set Next Line لتعيين نقطة البداية من السطر المحدد
                           Expanded(
                             child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
                               setState(() {
@@ -620,7 +620,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   height: 125,
                   child: Row(
                     children: [
-                      // صندوق التغذية مع أزرار الموجب والسالب (+) و (-)
+                      // صندوق التغذية مع أزرار الموجب (+) و (-)
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -668,7 +668,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ),
                       ),
                       const SizedBox(width: 3),
-                      // صندوق سرعة المغزل مع أزرار الموجب (+) والسالب (-) وعرض رقم العدة
+                      // صندوق سرعة المغزل مع أزرار الموجب (+) و (-) وعرض رقم العدة
                       Expanded(
                         flex: 5,
                         child: Container(
