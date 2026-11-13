@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Lock to Landscape for authentic Mach3 wide-screen layout
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -113,12 +112,12 @@ class Mach3MainScreen extends StatefulWidget {
 }
 
 class _Mach3MainScreenState extends State<Mach3MainScreen> {
-  int currentTab = 0; // 0: Program Run, 1: MDI, 2: ToolPath, 3: Offsets, 4: Settings, 5: Diagnostics
+  int currentTab = 0;
   String fileName = 'No File Loaded';
   String gcode = '';
   GCodeResult? result;
 
-  // Network & Mach3 State
+  // Network & State
   bool connected = false;
   Socket? pcSocket;
   String pcIp = '192.168.1.100';
@@ -129,12 +128,17 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   double droY = 0.0000;
   double droZ = 0.0000;
   bool machineCoords = false;
-  bool estop = true; // Mach3 starts in Reset/Estop mode
+  bool estop = true; 
   bool spindleOn = false;
   int spindleRpm = 12000;
   int feedOverride = 100;
   int currentTool = 1;
   double jogStep = 1.0;
+
+  // --- Built-in Simulator State ---
+  Timer? simulatorTimer;
+  int simulatorIndex = 0;
+  bool isSimulating = false;
 
   final TextEditingController mdiController = TextEditingController();
 
@@ -142,6 +146,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   void initState() {
     super.initState();
     loadPreferences();
+  }
+
+  @override
+  void dispose() {
+    simulatorTimer?.cancel();
+    pcSocket?.destroy();
+    super.dispose();
   }
 
   Future<void> loadPreferences() async {
@@ -176,24 +187,79 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     setState(() => connected = false);
   }
 
+  // --- COMMAND HANDLER (Supports Built-in Simulation Mode) ---
   void sendCommand(String cmd) {
-    // Local simulation feedback when offline
-    if (!connected || pcSocket == null) {
-      if (cmd == 'RESET') setState(() => estop = !estop);
-      if (cmd == 'ZERO:X') setState(() => droX = 0.0);
-      if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
-      if (cmd == 'ZERO:Z') setState(() => droZ = 0.0);
-      if (cmd == 'JOG:X+') setState(() => droX += jogStep);
-      if (cmd == 'JOG:X-') setState(() => droX -= jogStep);
-      if (cmd == 'JOG:Y+') setState(() => droY += jogStep);
-      if (cmd == 'JOG:Y-') setState(() => droY -= jogStep);
-      if (cmd == 'JOG:Z+') setState(() => droZ += jogStep);
-      if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep);
-      if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; });
-      if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
+    if (connected && pcSocket != null) {
+      pcSocket!.write('$cmd\n');
       return;
     }
-    pcSocket!.write('$cmd\n');
+
+    // --- OFFLINE / SIMULATION MODE LOGIC ---
+    if (cmd == 'RESET') {
+      setState(() {
+        estop = !estop;
+        if (estop) stopSimulation();
+      });
+    }
+
+    if (estop && cmd != 'RESET') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('E-Stop is Active! Press RESET to enable motion.')),
+      );
+      return;
+    }
+
+    if (cmd == 'CYCLE_START') {
+      startSimulation();
+    } else if (cmd == 'FEED_HOLD' || cmd == 'STOP') {
+      stopSimulation();
+    } else if (cmd == 'REWIND') {
+      stopSimulation();
+      setState(() {
+        simulatorIndex = 0;
+        droX = 0;
+        droY = 0;
+        droZ = 0;
+      });
+    } else if (cmd == 'ZERO:X') setState(() => droX = 0.0);
+    else if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
+    else if (cmd == 'ZERO:Z') setState(() => droZ = 0.0);
+    else if (cmd == 'JOG:X+') setState(() => droX += jogStep);
+    else if (cmd == 'JOG:X-') setState(() => droX -= jogStep);
+    else if (cmd == 'JOG:Y+') setState(() => droY += jogStep);
+    else if (cmd == 'JOG:Y-') setState(() => droY -= jogStep);
+    else if (cmd == 'JOG:Z+') setState(() => droZ += jogStep);
+    else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep);
+    else if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; });
+    else if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
+  }
+
+  void startSimulation() {
+    if (result == null || result!.points.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No G-Code file loaded for simulation!')));
+      return;
+    }
+    if (isSimulating) return;
+
+    setState(() => isSimulating = true);
+    simulatorTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (simulatorIndex >= result!.points.length) {
+        stopSimulation();
+        return;
+      }
+      final pt = result!.points[simulatorIndex];
+      setState(() {
+        droX = pt.x;
+        droY = pt.y;
+        droZ = pt.z;
+        simulatorIndex++;
+      });
+    });
+  }
+
+  void stopSimulation() {
+    simulatorTimer?.cancel();
+    setState(() => isSimulating = false);
   }
 
   void parsePcData(String data) {
@@ -229,6 +295,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         fileName = file.name;
         gcode = content;
         result = parsed;
+        simulatorIndex = 0;
       });
       if (connected) sendCommand('LOAD_FILE:${file.name}');
     } catch (_) {}
@@ -240,9 +307,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ==========================================
-            // TOP MACH3 CLASSIC MENU & SCREEN TABS
-            // ==========================================
             Container(
               height: 34,
               color: const Color(0xFF2B303B),
@@ -258,19 +322,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     margin: const EdgeInsets.only(right: 6),
-                    color: connected ? Colors.green.shade800 : Colors.red.shade900,
+                    color: isSimulating ? Colors.amber.shade800 : (connected ? Colors.green.shade800 : Colors.blueGrey.shade800),
                     child: Text(
-                      connected ? 'PC LINK: ON' : 'SIMULATION / OFFLINE',
+                      isSimulating ? 'SIMULATING...' : (connected ? 'PC LINK: ON' : 'SIMULATION MODE'),
                       style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ),
                 ],
               ),
             ),
-
-            // ==========================================
-            // MAIN SCREEN CONTENT
-            // ==========================================
             Expanded(
               child: IndexedStack(
                 index: currentTab,
@@ -284,10 +344,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
-
-            // ==========================================
-            // BOTTOM MACH3 STATUS BAR (Status Line)
-            // ==========================================
             Container(
               height: 24,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -297,8 +353,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   const Text('Status: ', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
                   Expanded(
                     child: Text(
-                      estop ? 'Emergency Mode Active - Press RESET to enable control' : 'Ready - G21 (mm) G90 G54',
-                      style: TextStyle(color: estop ? Colors.redAccent : Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                      estop ? 'Emergency Mode Active - Press RESET' : (isSimulating ? 'Running simulation loop...' : 'Ready - Simulation Mode Active'),
+                      style: TextStyle(color: estop ? Colors.redAccent : (isSimulating ? Colors.amberAccent : Colors.white70), fontSize: 11, fontFamily: 'monospace'),
                     ),
                   ),
                   Text('File: $fileName', style: const TextStyle(color: Colors.cyanAccent, fontSize: 11)),
@@ -337,20 +393,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==========================================
-  // TAB 0: PROGRAM RUN (1:1 Mach3 1024.set Layout)
-  // ==========================================
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // --- COLUMN 1: G-CODE & CYCLE CONTROLS ---
           Expanded(
             flex: 3,
             child: Column(
               children: [
-                // G-Code Window
                 Expanded(
                   child: Container(
                     width: double.infinity,
@@ -361,14 +412,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     ),
                     child: SingleChildScrollView(
                       child: SelectableText(
-                        gcode.isEmpty ? 'N10 G21 G90 G54\nN20 M3 S12000\nN30 G0 X0 Y0\n(Load G-Code file...)' : gcode,
+                        gcode.isEmpty ? 'N10 G21 G90 G54\nN20 M3 S12000\nN30 G0 X0 Y0\n(Load G-Code file to simulate...)' : gcode,
                         style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Cycle Buttons Grid
                 Row(
                   children: [
                     Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'))),
@@ -392,8 +442,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-
-          // --- COLUMN 2: AXIS DROs & ZERO BUTTONS ---
           Expanded(
             flex: 4,
             child: Container(
@@ -404,7 +452,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               ),
               child: Column(
                 children: [
-                  // Reset Button & Machine Coords Toggle
                   Row(
                     children: [
                       Expanded(
@@ -437,16 +484,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-
-                  // X, Y, Z DRO Rows with Zero Buttons
                   droAxisRow('X', droX, () => sendCommand('ZERO:X')),
                   const SizedBox(height: 4),
                   droAxisRow('Y', droY, () => sendCommand('ZERO:Y')),
                   const SizedBox(height: 4),
                   droAxisRow('Z', droZ, () => sendCommand('ZERO:Z')),
                   const SizedBox(height: 6),
-
-                  // Ref All Home & Go To Zero
                   Row(
                     children: [
                       Expanded(child: classicMachBtn('REF ALL HOME', Colors.teal.shade800, () => sendCommand('REF_ALL_HOME'), height: 32)),
@@ -455,8 +498,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     ],
                   ),
                   const Spacer(),
-
-                  // Feed Rate & Spindle Controls
                   Container(
                     padding: const EdgeInsets.all(4),
                     color: const Color(0xFF161920),
@@ -496,13 +537,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-
-          // --- COLUMN 3: TOOLPATH DISPLAY & MINI JOG ---
           Expanded(
             flex: 3,
             child: Column(
               children: [
-                // Toolpath Box
                 Expanded(
                   flex: 5,
                   child: Container(
@@ -525,7 +563,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Compact Jog Controls
                 Expanded(
                   flex: 4,
                   child: Container(
@@ -594,7 +631,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   Widget droAxisRow(String axis, double value, VoidCallback onZero) {
     return Row(
       children: [
-        // Zero Axis Button
         SizedBox(
           width: 58,
           height: 36,
@@ -609,7 +645,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
         ),
         const SizedBox(width: 4),
-        // Black Digital Readout Box
         Expanded(
           child: Container(
             height: 36,
@@ -625,7 +660,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 fontFamily: 'monospace',
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: machineCoords ? Colors.redAccent : const Color(0xFF00FF41), // Classic Mach3 Phosphor Green
+                color: machineCoords ? Colors.redAccent : const Color(0xFF00FF41),
               ),
             ),
           ),
@@ -681,9 +716,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==========================================
-  // TAB 1: MDI SCREEN (Alt-2)
-  // ==========================================
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(10),
@@ -717,26 +749,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               }, height: 54),
             ],
           ),
-          const SizedBox(height: 15),
-          const Text('QUICK MACROS & CYCLES', style: TextStyle(color: Colors.white70, fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              classicMachBtn('G28 Home All', const Color(0xFF333B48), () => sendCommand('MDI:G28')),
-              classicMachBtn('M3 S12000 (CW)', const Color(0xFF333B48), () => sendCommand('MDI:M3 S12000')),
-              classicMachBtn('M5 Spindle Stop', const Color(0xFF333B48), () => sendCommand('MDI:M5')),
-              classicMachBtn('G0 Z20 (Safe Z)', const Color(0xFF333B48), () => sendCommand('MDI:G0 Z20')),
-            ],
-          ),
         ],
       ),
     );
   }
 
-  // ==========================================
-  // TAB 2: FULL TOOLPATH SCREEN (Alt-4)
-  // ==========================================
   Widget buildFullToolpathTab() {
     return Container(
       margin: const EdgeInsets.all(6),
@@ -746,26 +763,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           result == null
               ? const Center(child: Text('No G-Code Program Loaded', style: TextStyle(color: Colors.white38)))
               : CustomPaint(painter: Mach3ToolpathPainter(result!.points), child: const SizedBox.expand()),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              color: Colors.black87,
-              child: Text(
-                'Lines: ${result?.lines ?? 0}\nDistance: ${(result?.distance ?? 0).toStringAsFixed(2)} mm',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.cyanAccent),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  // ==========================================
-  // TAB 3: OFFSETS & FIXTURES (Alt-5)
-  // ==========================================
   Widget buildOffsetsTab() {
     return Padding(
       padding: const EdgeInsets.all(8),
@@ -785,32 +787,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       classicMachBtn(g, const Color(0xFF333B48), () => sendCommand('FIXTURE:$g')),
                   ],
                 ),
-                const SizedBox(height: 15),
-                const Text('EDGE FINDER & Z-PROBE', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                const SizedBox(height: 8),
-                classicMachBtn('Auto Tool Zero (Z Probe)', Colors.teal.shade800, () => sendCommand('PROBE_Z')),
-              ],
-            ),
-          ),
-          const VerticalDivider(color: Colors.white24),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('TOOL TABLE OFFSET', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Text('Selected Tool #: '),
-                    const SizedBox(width: 8),
-                    smallBtn('-', () => setState(() => currentTool = math.max(1, currentTool - 1))),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Text('$currentTool', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00FF41))),
-                    ),
-                    smallBtn('+', () => setState(() => currentTool = math.min(99, currentTool + 1))),
-                  ],
-                ),
               ],
             ),
           ),
@@ -819,9 +795,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==========================================
-  // TAB 4: SETTINGS / NETWORK CONFIG (Alt-6)
-  // ==========================================
   Widget buildSettingsTab() {
     final ipCtrl = TextEditingController(text: pcIp);
     final portCtrl = TextEditingController(text: pcPort.toString());
@@ -873,9 +846,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==========================================
-  // TAB 5: DIAGNOSTICS (Alt-7)
-  // ==========================================
   Widget buildDiagnosticsTab() {
     return Padding(
       padding: const EdgeInsets.all(10),
@@ -889,14 +859,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             runSpacing: 10,
             children: [
               ledIndicator('E-Stop Signal', estop),
-              ledIndicator('M1++ Limit', false),
-              ledIndicator('M1-- Limit', false),
-              ledIndicator('M1 Home', false),
-              ledIndicator('M2++ Limit', false),
-              ledIndicator('M2 Home', false),
-              ledIndicator('M3++ Limit', false),
-              ledIndicator('M3 Home', false),
-              ledIndicator('Digitize / Probe', false),
+              ledIndicator('Simulation Mode', !connected),
             ],
           ),
         ],
