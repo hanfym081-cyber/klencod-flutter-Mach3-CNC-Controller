@@ -406,7 +406,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 index: currentTab,
                 children: [
                   buildProgramRunTab(),
-                  buildMdiTab(),
+                  buildMdiTab(), // تم ربط شاشة MDI المتقدمة هنا بشكل مباشر
                   buildFullToolpathTab(),
                   buildOffsetsTab(),
                   buildSettingsTab(),
@@ -856,7 +856,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ================= شاشة الـ MDI المطابقة تماماً لصورة Mach3 الأصلية =================
+  // ================= شاشة الـ MDI المتقدمة والمطابقة للصورة الأصلية =================
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -939,7 +939,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // القسم الأيمن: أزرار التحكم الإضافية المطابقة لصورة الأصل (Teach / Load / Variables)
+          // القسم الأيمن: الأزرار الإضافية المطابقة لصورة الأصل (Teach, Load, Variables)
           Expanded(
             flex: 3,
             child: Container(
