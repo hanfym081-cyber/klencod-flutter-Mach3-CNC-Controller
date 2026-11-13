@@ -1,4 +1,6 @@
-
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -16,7 +18,7 @@ class CncApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'CNC Controller',
+      title: 'Mach3 Android Remote',
       theme: ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
@@ -142,19 +144,110 @@ class _MainScreenState extends State<MainScreen> {
   String fileName = 'No file selected';
   String gcode = '';
   GCodeResult? result;
+
+  // Network Connection State
   bool connected = false;
+  Socket? pcSocket;
+  String pcIp = '192.168.1.100';
+  int pcPort = 50002;
+  
+  // Live DRO (Digital Readouts) from PC
+  double droX = 0.0;
+  double droY = 0.0;
+  double droZ = 0.0;
+  bool estop = false;
+  bool limitHit = false;
 
   final pages = const [
     'Dashboard',
     'Program Run',
     'Toolpath',
-    'MDI',
-    'Jog',
-    'Offsets',
+    'MDI & Control',
+    'Jog Controller',
+    'Work Offsets',
     'Tool Table',
-    'Diagnostics',
+    'Fixtures (G54-G59)',
+    'Diagnostics & Limits',
     'Settings',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadPreferences();
+  }
+
+  Future<void> loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      pcIp = prefs.getString('pc_ip') ?? '192.168.1.100';
+      pcPort = prefs.getInt('pc_port') ?? 50002;
+    });
+  }
+
+  Future<void> savePreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pc_ip', pcIp);
+    await prefs.setInt('pc_port', pcPort);
+  }
+
+  // Connect to PC via TCP/IP Wi-Fi
+  Future<void> connectToPC() async {
+    try {
+      showMessage('Connecting to $pcIp:$pcPort...');
+      pcSocket = await Socket.connect(pcIp, pcPort, timeout: const Duration(seconds: 5));
+      setState(() => connected = true);
+      showMessage('Connected to PC successfully!');
+
+      pcSocket!.listen(
+        (data) {
+          final message = utf8.decode(data);
+          parsePcData(message);
+        },
+        onDone: () {
+          disconnectFromPC();
+          showMessage('Connection closed by PC');
+        },
+        onError: (error) {
+          disconnectFromPC();
+          showMessage('Connection error: $error');
+        },
+      );
+    } catch (e) {
+      disconnectFromPC();
+      showMessage('Failed to connect: $e');
+    }
+  }
+
+  void disconnectFromPC() {
+    pcSocket?.destroy();
+    pcSocket = null;
+    setState(() => connected = false);
+  }
+
+  void sendCommand(String cmd) {
+    if (!connected || pcSocket == null) {
+      showMessage('Not connected to PC!');
+      return;
+    }
+    pcSocket!.write('$cmd\n');
+  }
+
+  void parsePcData(String data) {
+    // Expected format from PC script: DRO:X=10.5,Y=20.0,Z=-2.1;ESTOP=0
+    try {
+      if (data.startsWith('DRO:')) {
+        final parts = data.substring(4).trim().split(';');
+        for (var part in parts) {
+          if (part.startsWith('X=')) droX = double.parse(part.substring(2));
+          if (part.startsWith('Y=')) droY = double.parse(part.substring(2));
+          if (part.startsWith('Z=')) droZ = double.parse(part.substring(2));
+          if (part.startsWith('ESTOP=')) estop = part.substring(6) == '1';
+        }
+        setState(() {});
+      }
+    } catch (_) {}
+  }
 
   Future<void> openFile() async {
     try {
@@ -183,6 +276,11 @@ class _MainScreenState extends State<MainScreen> {
         result = parsed;
       });
 
+      // Send file content or path to PC if connected
+      if (connected) {
+        sendCommand('LOAD_FILE:${file.name}');
+      }
+
       showMessage('G-code loaded successfully');
     } catch (e) {
       showMessage('File error: $e');
@@ -197,26 +295,17 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget buildPage() {
     switch (page) {
-      case 0:
-        return dashboard();
-      case 1:
-        return programPage();
-      case 2:
-        return toolpathPage();
-      case 3:
-        return mdiPage();
-      case 4:
-        return jogPage();
-      case 5:
-        return offsetsPage();
-      case 6:
-        return toolsPage();
-      case 7:
-        return diagnosticsPage();
-      case 8:
-        return settingsPage();
-      default:
-        return dashboard();
+      case 0: return dashboard();
+      case 1: return programPage();
+      case 2: return toolpathPage();
+      case 3: return mdiPage();
+      case 4: return jogPage();
+      case 5: return offsetsPage();
+      case 6: return toolsPage();
+      case 7: return fixturesPage();
+      case 8: return diagnosticsPage();
+      case 9: return settingsPage();
+      default: return dashboard();
     }
   }
 
@@ -229,9 +318,7 @@ class _MainScreenState extends State<MainScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.bold)),
+            Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             child,
           ],
@@ -250,9 +337,7 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             Icon(icon, color: Colors.cyan, size: 25),
             const SizedBox(height: 9),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Text(title, style: const TextStyle(color: Colors.white60)),
           ],
         ),
@@ -260,110 +345,119 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  // --- 1. Dashboard Page ---
   Widget dashboard() {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        const Text('CNC CONTROL CENTER',
-            style: TextStyle(
-                fontSize: 21, fontWeight: FontWeight.bold)),
+        const Text('MACH3 WIFI CONTROL CENTER', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
         const SizedBox(height: 5),
-        const Text('Android CNC interface',
-            style: TextStyle(color: Colors.white60)),
+        const Text('Remote Android Companion for Mach3 PC', style: TextStyle(color: Colors.white60)),
         const SizedBox(height: 15),
+        
+        // Connection Panel
         panel(
-          'Machine Connection',
-          Row(
+          'PC Wi-Fi Connection',
+          Column(
             children: [
-              Icon(
-                connected ? Icons.check_circle : Icons.link_off,
-                color: connected ? Colors.green : Colors.orange,
+              Row(
+                children: [
+                  Icon(connected ? Icons.check_circle : Icons.link_off, color: connected ? Colors.green : Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(connected ? 'Connected to $pcIp' : 'Disconnected from PC')),
+                  FilledButton.icon(
+                    onPressed: connected ? disconnectFromPC : connectToPC,
+                    icon: Icon(connected ? Icons.logout : Icons.login),
+                    label: Text(connected ? 'Disconnect' : 'Connect'),
+                    style: FilledButton.styleFrom(backgroundColor: connected ? Colors.red : Colors.cyan),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  connected ? 'Connected' : 'Not connected',
-                ),
-              ),
-              const Chip(label: Text('OFFLINE')),
             ],
           ),
         ),
+
+        // Live DRO View
+        panel(
+          'Live DRO (Digital Readouts)',
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              droBox('X', droX, Colors.cyan),
+              droBox('Y', droY, Colors.green),
+              droBox('Z', droZ, Colors.orange),
+            ],
+          ),
+        ),
+
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: 2,
           childAspectRatio: 1.55,
           children: [
-            stat('G-code lines', '${result?.lines ?? 0}',
-                Icons.description),
-            stat('Movements', '${result?.movements ?? 0}',
-                Icons.timeline),
-            stat('Distance', '${(result?.distance ?? 0).toStringAsFixed(2)} mm',
-                Icons.straighten),
-            stat('Loaded program', result == null ? 'None' : 'Ready',
-                Icons.folder_open),
+            stat('G-code lines', '${result?.lines ?? 0}', Icons.description),
+            stat('Movements', '${result?.movements ?? 0}', Icons.timeline),
+            stat('Distance', '${(result?.distance ?? 0).toStringAsFixed(2)} mm', Icons.straighten),
+            stat('Loaded file', fileName.length > 15 ? '${fileName.substring(0, 12)}...' : fileName, Icons.folder_open),
           ],
-        ),
-        panel(
-          'Current Program',
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(fileName),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: openFile,
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Open G-code file'),
-              ),
-            ],
-          ),
-        ),
-        panel(
-          'System Status',
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Application: Ready'),
-              Text('G-code parser: Available'),
-              Text('Toolpath viewer: Available'),
-              Text('Machine communication: Not configured'),
-            ],
-          ),
         ),
       ],
     );
   }
 
+  Widget droBox(String axis, double val, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0C1017),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(axis, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 5),
+          Text(val.toStringAsFixed(3), style: const TextStyle(fontSize: 22, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  // --- 2. Program Run Page ---
   Widget programPage() {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
         panel(
-          'Program',
+          'G-code Control',
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(fileName),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: openFile,
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Open G-code'),
-              ),
-            ],
-          ),
-        ),
-        panel(
-          'Program Information',
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Lines: ${result?.lines ?? 0}'),
-              Text('Movements: ${result?.movements ?? 0}'),
-              Text(
-                'Distance: ${(result?.distance ?? 0).toStringAsFixed(3)} mm',
+              Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: openFile,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Open File'),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    onPressed: () => sendCommand('CYCLE_START'),
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Cycle Start'),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    onPressed: () => sendCommand('FEED_HOLD'),
+                    icon: const Icon(Icons.pause),
+                    label: const Text('Feed Hold'),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+                  ),
+                ],
               ),
             ],
           ),
@@ -375,20 +469,16 @@ class _MainScreenState extends State<MainScreen> {
             child: SingleChildScrollView(
               child: SelectableText(
                 gcode.isEmpty ? 'No program loaded' : gcode,
-                style: const TextStyle(
-                    fontFamily: 'monospace', fontSize: 12),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
               ),
             ),
           ),
-        ),
-        const Text(
-          'Run and machine-control commands are disabled until a real connection is implemented.',
-          style: TextStyle(color: Colors.orange),
         ),
       ],
     );
   }
 
+  // --- 3. Toolpath Page ---
   Widget toolpathPage() {
     return Column(
       children: [
@@ -396,11 +486,7 @@ class _MainScreenState extends State<MainScreen> {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              const Expanded(
-                child: Text('Toolpath Preview',
-                    style: TextStyle(
-                        fontSize: 19, fontWeight: FontWeight.bold)),
-              ),
+              const Expanded(child: Text('Toolpath 3D/2D View', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))),
               Text('${result?.points.length ?? 0} points'),
             ],
           ),
@@ -421,86 +507,198 @@ class _MainScreenState extends State<MainScreen> {
                   ),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Green: rapid movement | Cyan: cutting movement'),
+      ],
+    );
+  }
+
+  // --- 4. MDI & Control ---
+  Widget mdiPage() {
+    final mdiController = TextEditingController();
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        panel(
+          'MDI (Manual Data Input)',
+          Column(
+            children: [
+              TextField(
+                controller: mdiController,
+                decoration: const InputDecoration(
+                  labelText: 'Enter G-code (e.g. G0 X0 Y0)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () {
+                  sendCommand('MDI:${mdiController.text}');
+                  showMessage('Sent MDI: ${mdiController.text}');
+                  mdiController.clear();
+                },
+                icon: const Icon(Icons.send),
+                label: const Text('Send Command'),
+              ),
+            ],
+          ),
+        ),
+        panel(
+          'Mach3 Quick Macros',
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ActionChip(label: const Text('Home All (G28)'), onPressed: () => sendCommand('MACRO:HOME')),
+              ActionChip(label: const Text('Spindle On'), onPressed: () => sendCommand('M3 S12000')),
+              ActionChip(label: const Text('Spindle Off'), onPressed: () => sendCommand('M5')),
+              ActionChip(label: const Text('Reset Mach3'), onPressed: () => sendCommand('RESET')),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget disabledPage(String title, String description) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_outline,
-                size: 55, color: Colors.orange),
-            const SizedBox(height: 18),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Text(description,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white60)),
-            const SizedBox(height: 15),
-            const Chip(label: Text('NOT CONNECTED')),
-          ],
+  // --- 5. Jog Controller ---
+  Widget jogPage() {
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        panel(
+          'Manual Axis Jogging',
+          Column(
+            children: [
+              const Text('Continuous / Step Jog', style: TextStyle(color: Colors.white60)),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  jogButton('Y+', () => sendCommand('JOG:Y+')),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  jogButton('X-', () => sendCommand('JOG:X-')),
+                  const SizedBox(width: 40),
+                  jogButton('X+', () => sendCommand('JOG:X+')),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  jogButton('Y-', () => sendCommand('JOG:Y-')),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  jogButton('Z+', () => sendCommand('JOG:Z+'), color: Colors.orange),
+                  const SizedBox(width: 20),
+                  jogButton('Z-', () => sendCommand('JOG:Z-'), color: Colors.orange),
+                ],
+              ),
+            ],
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget jogButton(String label, VoidCallback onPressed, {Color color = Colors.cyan}) {
+    return SizedBox(
+      width: 80,
+      height: 80,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(backgroundColor: color.withOpacity(0.2), side: BorderSide(color: color)),
+        child: Text(label, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
       ),
     );
   }
 
-  Widget mdiPage() => disabledPage(
-        'MDI',
-        'Manual G-code commands will be enabled after implementing and testing the machine connection.',
-      );
-
-  Widget jogPage() => disabledPage(
-        'JOG CONTROL',
-        'Axis movement is disabled until a verified machine connection and safety controls are available.',
-      );
-
+  // --- 6. Work Offsets (G54 - G59) ---
   Widget offsetsPage() => const OffsetPage();
 
+  // --- 7. Tool Table ---
   Widget toolsPage() => const ToolTablePage();
 
-  Widget diagnosticsPage() {
+  // --- 8. Fixtures Page ---
+  Widget fixturesPage() {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        panel('Application', const Text('Running')),
-        panel('G-code Parser',
-            Text(result == null ? 'Waiting for program' : 'Ready')),
-        panel('Toolpath Engine',
-            Text(result == null ? 'Waiting for program' : 'Ready')),
-        panel('Machine Connection',
-            const Text('Not implemented')),
-        panel('Safety',
-            const Text('Machine commands are locked')),
+        panel('Coordinate Systems (Fixtures)', Column(
+          children: [
+            for (var g in ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'])
+              ListTile(
+                title: Text('Work Coordinate System: $g'),
+                trailing: FilledButton(
+                  onPressed: () => sendCommand('FIXTURE:$g'),
+                  child: const Text('Select'),
+                ),
+              ),
+          ],
+        )),
       ],
     );
   }
 
-  Widget settingsPage() {
+  // --- 9. Diagnostics ---
+  Widget diagnosticsPage() {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        panel('Application Settings', const Column(
+        panel('Mach3 Status & Diagnostics', Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Application: CNC Controller'),
-            Text('Platform: Android'),
-            Text('Interface: Flutter'),
+            Text('E-Stop Status: ${estop ? "TRIGGERED (ACTIVE)" : "OK"}', style: TextStyle(color: estop ? Colors.red : Colors.green)),
+            const SizedBox(height: 10),
+            Text('Limit Switches: ${limitHit ? "TRIGGERED" : "Normal"}'),
+            const SizedBox(height: 10),
+            Text('Network Socket: ${connected ? "Active ($pcIp)" : "Offline"}'),
           ],
         )),
-        panel('Connection Settings',
-            const Text('Connection setup will be implemented after selecting the communication hardware.')),
-        panel('About',
-            const Text('CNC Controller - Initial Android version')),
+      ],
+    );
+  }
+
+  // --- 10. Settings ---
+  Widget settingsPage() {
+    final ipController = TextEditingController(text: pcIp);
+    final portController = TextEditingController(text: pcPort.toString());
+
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        panel('PC Network Settings', Column(
+          children: [
+            TextField(
+              controller: ipController,
+              decoration: const InputDecoration(labelText: 'Computer IP Address (e.g. 192.168.1.100)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: portController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Port (default 50002)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  pcIp = ipController.text.trim();
+                  pcPort = int.tryParse(portController.text.trim()) ?? 50002;
+                });
+                savePreferences();
+                showMessage('Settings saved!');
+              },
+              child: const Text('Save Settings'),
+            ),
+          ],
+        )),
       ],
     );
   }
@@ -522,13 +720,10 @@ class _MainScreenState extends State<MainScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Icon(Icons.precision_manufacturing,
-                      size: 45, color: Colors.cyan),
+                  Icon(Icons.precision_manufacturing, size: 45, color: Colors.cyan),
                   SizedBox(height: 10),
-                  Text('CNC Controller',
-                      style: TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold)),
-                  Text('Mach3 Android Interface'),
+                  Text('Mach3 Remote', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text('Full Milling Control Suite'),
                 ],
               ),
             ),
@@ -558,6 +753,7 @@ class _MainScreenState extends State<MainScreen> {
       Icons.gamepad,
       Icons.tune,
       Icons.build,
+      Icons.grid_view,
       Icons.monitor_heart,
       Icons.settings,
     ];
@@ -567,23 +763,13 @@ class _MainScreenState extends State<MainScreen> {
 
 class ToolpathPainter extends CustomPainter {
   final List<GPoint> points;
-
   ToolpathPainter(this.points);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final axisPaint = Paint()
-      ..color = Colors.white24
-      ..strokeWidth = 1;
-
-    canvas.drawLine(
-        Offset(0, size.height / 2),
-        Offset(size.width, size.height / 2),
-        axisPaint);
-    canvas.drawLine(
-        Offset(size.width / 2, 0),
-        Offset(size.width / 2, size.height),
-        axisPaint);
+    final axisPaint = Paint()..color = Colors.white24..strokeWidth = 1;
+    canvas.drawLine(Offset(0, size.height / 2), Offset(size.width, size.height / 2), axisPaint);
+    canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height), axisPaint);
 
     if (points.isEmpty) return;
 
@@ -594,225 +780,66 @@ class ToolpathPainter extends CustomPainter {
 
     final dx = maxX - minX;
     final dy = maxY - minY;
-    final rangeX = dx == 0 ? 1.0 : dx;
-    final rangeY = dy == 0 ? 1.0 : dy;
+    final scale = math.min((size.width - 40) / (dx == 0 ? 1.0 : dx), (size.height - 40) / (dy == 0 ? 1.0 : dy));
 
-    final scale = math.min(
-      (size.width - 40) / rangeX,
-      (size.height - 40) / rangeY,
-    );
-
-    Offset mapPoint(GPoint p) {
-      return Offset(
-        20 + (p.x - minX) * scale,
-        size.height - 20 - (p.y - minY) * scale,
-      );
-    }
+    Offset mapPoint(GPoint p) => Offset(20 + (p.x - minX) * scale, size.height - 20 - (p.y - minY) * scale);
 
     for (int i = 1; i < points.length; i++) {
       final a = mapPoint(points[i - 1]);
       final b = mapPoint(points[i]);
-
       final paint = Paint()
         ..color = points[i].rapid ? Colors.green : Colors.cyan
         ..strokeWidth = 2
         ..strokeCap = StrokeCap.round;
-
       canvas.drawLine(a, b, paint);
     }
-
-    final startPaint = Paint()..color = Colors.orange;
-    final endPaint = Paint()..color = Colors.red;
-
-    canvas.drawCircle(mapPoint(points.first), 5, startPaint);
-    canvas.drawCircle(mapPoint(points.last), 5, endPaint);
   }
 
   @override
-  bool shouldRepaint(covariant ToolpathPainter oldDelegate) {
-    return oldDelegate.points != points;
-  }
+  bool shouldRepaint(covariant ToolpathPainter oldDelegate) => oldDelegate.points != points;
 }
 
-class OffsetPage extends StatefulWidget {
+class OffsetPage extends StatelessWidget {
   const OffsetPage({super.key});
-
-  @override
-  State<OffsetPage> createState() => _OffsetPageState();
-}
-
-class _OffsetPageState extends State<OffsetPage> {
-  final fields = <String, TextEditingController>{};
-
-  @override
-  void initState() {
-    super.initState();
-    for (final axis in ['X', 'Y', 'Z']) {
-      fields[axis] = TextEditingController(text: '0.000');
-    }
-    load();
-  }
-
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final axis in ['X', 'Y', 'Z']) {
-      fields[axis]!.text = prefs.getString('offset_$axis') ?? '0.000';
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> save() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final axis in ['X', 'Y', 'Z']) {
-      await prefs.setString('offset_$axis', fields[axis]!.text);
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offsets saved locally')),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final c in fields.values) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('Work Offsets',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text('Work Offsets (G54 - G59)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        for (final axis in ['X', 'Y', 'Z'])
+        for (var axis in ['X', 'Y', 'Z'])
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: TextField(
-                controller: fields[axis],
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true, signed: true),
-                decoration: InputDecoration(
-                  labelText: '$axis Offset (mm)',
-                  border: const OutlineInputBorder(),
-                ),
+                decoration: InputDecoration(labelText: '$axis Offset (mm)', border: const OutlineInputBorder()),
               ),
             ),
           ),
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: save,
-          child: const Text('Save Local Values'),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'These values are stored on this Android device only. They are not sent to Mach3.',
-          style: TextStyle(color: Colors.orange),
-        ),
       ],
     );
   }
 }
 
-class ToolTablePage extends StatefulWidget {
+class ToolTablePage extends StatelessWidget {
   const ToolTablePage({super.key});
-
-  @override
-  State<ToolTablePage> createState() => _ToolTablePageState();
-}
-
-class _ToolTablePageState extends State<ToolTablePage> {
-  List<String> tools = ['Tool 1', 'Tool 2', 'Tool 3'];
-
-  @override
-  void initState() {
-    super.initState();
-    load();
-  }
-
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('cnc_tools');
-    if (saved != null && mounted) {
-      setState(() => tools = saved);
-    }
-  }
-
-  Future<void> save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('cnc_tools', tools);
-  }
-
-  Future<void> addTool() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Tool'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Tool name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-
-    if (name != null && name.isNotEmpty) {
-      setState(() => tools.add(name));
-      await save();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        onPressed: addTool,
-        child: const Icon(Icons.add),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(14),
-        children: [
-          const Text('Tool Table',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          for (int i = 0; i < tools.length; i++)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.build, color: Colors.cyan),
-                title: Text(tools[i]),
-                subtitle: Text('Tool number: ${i + 1}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    setState(() => tools.removeAt(i));
-                    await save();
-                  },
-                ),
-              ),
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        const Text('Tool Table (Mach3 Mill)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        for (int i = 1; i <= 5; i++)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.build, color: Colors.cyan),
+              title: Text('Tool #$i'),
+              subtitle: const Text('Diameter: 3.175 mm | Height Offset: 0.00'),
             ),
-          const SizedBox(height: 12),
-          const Text(
-            'Tool data is stored locally. It is not yet synchronized with Mach3.',
-            style: TextStyle(color: Colors.orange),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
