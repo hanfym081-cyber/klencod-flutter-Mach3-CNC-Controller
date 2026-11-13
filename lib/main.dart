@@ -149,17 +149,19 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   double spindleRpm = 12000.0;
   int feedOverride = 100;
   int rapidOverride = 100;
+  int spindleOverride = 100;
+  
   bool optionalStop = false;
   bool blockDelete = false;
   bool cvMode = true;
   
-  int currentTool = 1; // رقم العدة الحالية
+  int currentTool = 0;
   double jogStep = 1.0;
 
   Timer? simulatorTimer;
   int simulatorIndex = 0;
   int activeLineIndex = -1;
-  int selectedLineIndex = 0; // السطر المحدد بواسطة المستخدم
+  int selectedLineIndex = 0;
   
   final ScrollController gcodeScrollController = ScrollController();
   final TextEditingController mdiController = TextEditingController();
@@ -285,8 +287,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = pt.x;
         droY = pt.y;
         droZ = pt.z;
-        currentFeedRate = pt.feed;
-        spindleRpm = pt.spindle;
+        currentFeedRate = pt.feed * (feedOverride / 100.0);
+        spindleRpm = pt.spindle * (spindleOverride / 100.0);
         activeLineIndex = pt.lineIndex;
         simulatorIndex++;
       });
@@ -372,13 +374,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     child: Text('Mill-> G15 G17 G21 G90 G54', style: TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.amberAccent)),
                   ),
                   const Spacer(),
-                  // عرض رقم العدة في الشريط العلوي
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    margin: const EdgeInsets.only(right: 6),
-                    color: Colors.blueGrey.shade800,
-                    child: Text('Tool: #$currentTool', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
-                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     margin: const EdgeInsets.only(right: 6),
@@ -473,7 +468,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               bool isActive = index == activeLineIndex;
                               bool isSelected = index == selectedLineIndex;
                               return InkWell(
-                                onTap: () => setState(() => selectedLineIndex = index), // اختيار السطر عند النقر
+                                onTap: () => setState(() => selectedLineIndex = index),
                                 child: Container(
                                   height: 18,
                                   color: isActive ? Colors.blue.shade900 : (isSelected ? Colors.grey.shade800 : Colors.transparent),
@@ -519,16 +514,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
                           const SizedBox(width: 2),
-                          // تفعيل زر Set Next Line لتعيين نقطة البداية من السطر المحدد
                           Expanded(
                             child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
                               setState(() {
                                 simulatorIndex = selectedLineIndex;
                                 activeLineIndex = selectedLineIndex;
                               });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Start line set to: $selectedLineIndex')),
-                              );
                             }, height: 26),
                           ),
                         ],
@@ -616,11 +607,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
+                // ================= صندوق Feed Rate و Spindle Speed المطابق للأصل تماماً وتعمل بفعالية =================
                 SizedBox(
-                  height: 125,
+                  height: 135,
                   child: Row(
                     children: [
-                      // صندوق التغذية مع أزرار الموجب (+) و (-)
+                      // 1. صندوق Feed Rate الأصلي والفعال
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -641,7 +633,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
                                       color: cvMode ? Colors.green.shade800 : Colors.blueGrey.shade800,
-                                      child: Text(cvMode ? 'CV Mode' : 'Exact Stop', style: const TextStyle(fontSize: 8)),
+                                      child: Text(cvMode ? 'CV Mode' : 'Exact Stop', style: const TextStyle(fontSize: 7)),
                                     ),
                                   ),
                                 ],
@@ -650,25 +642,47 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('FRO: $feedOverride%', style: const TextStyle(fontSize: 10, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                  const Text('OverRidden', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                                  Text('FRO % $feedOverride', style: const TextStyle(fontSize: 9, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Rapid FRO', style: TextStyle(fontSize: 8, color: Colors.white60)),
                                   Row(
                                     children: [
-                                      smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 5))),
+                                      smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
                                       const SizedBox(width: 2),
-                                      smallBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 5))),
+                                      smallBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 10))),
                                     ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text('F: ${currentFeedRate.toStringAsFixed(1)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
-                              const Text('Units/Min', style: TextStyle(fontSize: 9, color: Colors.white60)),
+                              Row(
+                                children: [
+                                  Expanded(child: smallBtn('FRO 100', () => setState(() => feedOverride = 100))),
+                                  const SizedBox(width: 2),
+                                  Expanded(child: smallBtn('Reset', () => setState(() => feedOverride = 100))),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text('Feedrate: ${currentFeedRate.toStringAsFixed(2)}', style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.cyanAccent)),
+                              const Divider(height: 2, color: Colors.white12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Units/Min', style: TextStyle(fontSize: 8)),
+                                  Text(currentFeedRate.toStringAsFixed(2), style: const TextStyle(fontSize: 8, fontFamily: 'monospace', color: Colors.white)),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(width: 3),
-                      // صندوق سرعة المغزل مع أزرار الموجب (+) و (-) وعرض رقم العدة
+                      // 2. صندوق Spindle Speed الأصلي والفعال
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -684,28 +698,14 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   const Text('Spindle Speed', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
-                                  Text('Tool #$currentTool', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                  Text('SRO % $spindleOverride', style: const TextStyle(fontSize: 8, color: Colors.greenAccent)),
                                 ],
                               ),
                               const Divider(height: 2, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('RPM: ${spindleRpm.toInt()}', style: const TextStyle(fontSize: 10, color: Colors.amberAccent, fontWeight: FontWeight.bold)),
-                                  Row(
-                                    children: [
-                                      smallBtn('-', () => setState(() => spindleRpm = math.max(1000, spindleRpm - 500))),
-                                      const SizedBox(width: 2),
-                                      smallBtn('+', () => setState(() => spindleRpm = math.min(24000, spindleRpm + 500))),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('S: ${spindleRpm.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
+                                  const Text('Spindle CW F5', style: TextStyle(fontSize: 8, color: Colors.white70)),
                                   classicMachBtn(
                                     spindleOn ? 'ON' : 'OFF',
                                     spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
@@ -714,7 +714,41 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   ),
                                 ],
                               ),
-                              const Text('Spindle CW F5', style: TextStyle(fontSize: 9, color: Colors.white60)),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('RPM Control', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                                  Row(
+                                    children: [
+                                      smallBtn('-', () => setState(() => spindleOverride = math.max(10, spindleOverride - 10))),
+                                      const SizedBox(width: 2),
+                                      smallBtn('+', () => setState(() => spindleOverride = math.min(200, spindleOverride + 10))),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Expanded(child: smallBtn('Reset RPM', () => setState(() => spindleOverride = 100))),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('RPM', style: TextStyle(fontSize: 8)),
+                                  Text('${spindleRpm.toInt()}', style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.cyanAccent)),
+                                ],
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('S-ov', style: TextStyle(fontSize: 8)),
+                                  Text('${(spindleRpm * (spindleOverride / 100)).toInt()}', style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.cyanAccent)),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -870,7 +904,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(color: const Color(0xFF333B48), border: Border.all(color: Colors.white24)),
-        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
       ),
     );
   }
