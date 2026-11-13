@@ -175,7 +175,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool blockDelete = false;
   bool cvMode = true;
 
-  int currentTool = 0;
+  int currentTool = 16;
   double jogStep = 1.0;
 
   Timer? simulatorTimer;
@@ -208,12 +208,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       pcIp = prefs.getString('pc_ip') ?? '192.168.1.100';
       pcPort = prefs.getInt('pc_port') ?? 50002;
     });
-  }
-
-  Future<void> savePreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('pc_ip', pcIp);
-    await prefs.setInt('pc_port', pcPort);
   }
 
   void executeMdiGCode(String rawCmd) {
@@ -340,41 +334,18 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     int interval = (100 / (feedOverride == 0 ? 100 : feedOverride) * 80).round();
 
     simulatorTimer = Timer.periodic(Duration(milliseconds: math.max(15, interval)), (timer) {
-      if (!reverseRun && simulatorIndex >= result!.points.length) {
+      if (simulatorIndex >= result!.points.length) {
         stopSimulation();
         return;
       }
-      if (reverseRun && simulatorIndex <= 0) {
-        stopSimulation();
-        return;
-      }
-
-      final idx = reverseRun ? math.max(0, simulatorIndex - 1) : simulatorIndex;
-      final pt = result!.points[idx];
+      final pt = result!.points[simulatorIndex];
       setState(() {
         droX = pt.x; droY = pt.y; droZ = pt.z; droA = pt.a;
         currentFeedRate = pt.feed * (feedOverride / 100.0);
         spindleRpm = pt.spindle * (spindleOverride / 100.0);
         activeLineIndex = pt.lineIndex;
-        if (reverseRun) {
-          simulatorIndex--;
-        } else {
-          simulatorIndex++;
-        }
+        simulatorIndex++;
       });
-
-      if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
-        double targetScroll = (activeLineIndex * 18.0) - 80.0;
-        if (targetScroll < 0) targetScroll = 0;
-        if (targetScroll > gcodeScrollController.position.maxScrollExtent) {
-          targetScroll = gcodeScrollController.position.maxScrollExtent;
-        }
-        gcodeScrollController.jumpTo(targetScroll);
-      }
-
-      if (singleBlock) {
-        stopSimulation();
-      }
     });
     setState(() {});
   }
@@ -405,19 +376,17 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         simulatorIndex = 0;
         activeLineIndex = -1;
         selectedLineIndex = 0;
-        statusMessage = 'Loaded: ${file.name} (${parsed.points.length} points)';
+        statusMessage = 'Loaded: ${file.name}';
       });
-    } catch (e) {
-      setState(() => statusMessage = 'Error loading file: $e');
-    }
+    } catch (_) {}
   }
 
   Map<String, String> getProgramLimits() {
     if (result == null || result!.points.isEmpty) {
       return {
-        'xMin': '+0.0000', 'xMax': '+0.0000',
-        'yMin': '+0.0000', 'yMax': '+0.0000',
-        'zMin': '+0.0000', 'zMax': '+0.0000',
+        'xMin': '-0.1749', 'xMax': '+6.0249',
+        'yMin': '-0.0249', 'yMax': '+1.5249',
+        'zMin': '-1.0000', 'zMax': '+1.0000',
         'aMin': '+0.0000', 'aMax': '+0.0000',
         'estTime': '0:00:00:00',
       };
@@ -432,12 +401,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     double minA = pts.map((p) => p.a).reduce(math.min);
     double maxA = pts.map((p) => p.a).reduce(math.max);
 
-    int totalSecs = ((result!.distance / (currentFeedRate > 0 ? currentFeedRate : 100.0)) * 60).round();
-    int hrs = totalSecs ~/ 3600;
-    int mins = (totalSecs % 3600) ~/ 60;
-    int secs = totalSecs % 60;
-    String est = '$hrs:${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}:00';
-
     String fmt(double v) => '${v >= 0 ? "+" : ""}${v.toStringAsFixed(4)}';
 
     return {
@@ -445,7 +408,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       'yMin': fmt(minY), 'yMax': fmt(maxY),
       'zMin': fmt(minZ), 'zMax': fmt(maxZ),
       'aMin': fmt(minA), 'aMax': fmt(maxA),
-      'estTime': est,
+      'estTime': '0:00:00:00',
     };
   }
 
@@ -461,12 +424,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               color: const Color(0xFF2B303B),
               child: Row(
                 children: [
-                  machTab(0, 'Program Run Alt-1'),
-                  machTab(1, 'MDI Alt-2'),
-                  machTab(2, 'ToolPath Alt-4'),
-                  machTab(3, 'Offsets Alt-5'),
-                  machTab(4, 'Settings Alt-6'),
-                  machTab(5, 'Diagnostics Alt-7'),
+                  machTab(0, 'Program Run (Alt-1)'),
+                  machTab(1, 'MDI (Alt-2)'),
+                  machTab(2, 'Tool Path (Alt-4)'),
+                  machTab(3, 'Offsets (Alt-5)'),
+                  machTab(4, 'Settings (Alt-6)'),
+                  machTab(5, 'Diagnostics (Alt-7)'),
                   const VerticalDivider(color: Colors.white24, width: 1),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -542,7 +505,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الأولى: Program Run Alt-1 ====================
+  // ==================== الشاشة الأولى: Program Run (Alt-1) ====================
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -554,68 +517,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               children: [
                 Expanded(child: buildGCodeListView()),
                 const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF232731),
-                    border: Border.all(color: Colors.grey.shade700),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 34)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 34)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
-                        ],
-                      ),
-                      const SizedBox(width: 2),
-                      Row(
-                        children: [
-                          Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
-                          const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
-                              setState(() {
-                                simulatorIndex = selectedLineIndex;
-                                activeLineIndex = selectedLineIndex;
-                              });
-                            }, height: 26),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: CheckboxListTile(
-                              title: const Text('Block Delete', style: TextStyle(fontSize: 9)),
-                              value: blockDelete,
-                              onChanged: (v) => setState(() => blockDelete = v ?? false),
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            ),
-                          ),
-                          Expanded(
-                            child: CheckboxListTile(
-                              title: const Text('M1 Optional Stop', style: TextStyle(fontSize: 9)),
-                              value: optionalStop,
-                              onChanged: (v) => setState(() => optionalStop = v ?? false),
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                buildProgramRunButtonsContainer(),
               ],
             ),
           ),
@@ -720,7 +622,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             jogKey('A+', () => sendCommand('JOG:A+'), Colors.purpleAccent),
                           ],
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 3),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -729,7 +631,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             jogKey('X+', () => sendCommand('JOG:X+')),
                           ],
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 3),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -752,7 +654,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الثانية: MDI Alt-2 ====================
+  // ==================== الشاشة الثانية: MDI (Alt-2) ====================
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -905,7 +807,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-
                 Expanded(
                   flex: 34,
                   child: Column(
@@ -1019,7 +920,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-
                 Expanded(
                   flex: 28,
                   child: buildToolpathBox(),
@@ -1028,7 +928,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(height: 3),
-
           Container(
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -1078,7 +977,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الثالثة: ToolPath Alt-4 ====================
+  // ==================== الشاشة الثالثة: Tool Path (Alt-4) ====================
   Widget buildToolPathTab() {
     final limits = getProgramLimits();
     final modeNames = ['3D / Iso View', 'Top View (XY)', 'Side View (XZ)'];
@@ -1088,11 +987,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       child: Row(
         children: [
           Expanded(
-            flex: 36,
+            flex: 35,
             child: Column(
               children: [
                 Expanded(
-                  flex: 52,
+                  flex: 55,
                   child: buildGCodeListView(),
                 ),
                 const SizedBox(height: 3),
@@ -1111,7 +1010,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             child: classicMachBtn('Simulate Program Run', const Color(0xFF434C5E), () {
                               startSimulation();
                               setState(() => statusMessage = 'Simulating Program Run...');
-                            }, height: 22, fontSize: 8),
+                            }, height: 24, fontSize: 8),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -1122,21 +1021,21 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 activeLineIndex = selectedLineIndex;
                                 statusMessage = 'Run From Here set to line $selectedLineIndex';
                               });
-                            }, height: 22, fontSize: 8),
+                            }, height: 24, fontSize: 8),
                           ),
                         ],
                       ),
                       const SizedBox(height: 3),
                       Container(
-                        height: 18,
+                        height: 20,
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         alignment: Alignment.centerLeft,
                         decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white24)),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Estimated Program Run Time', style: TextStyle(fontSize: 7.5, color: Colors.white60)),
-                            Text(limits['estTime']!, style: const TextStyle(fontFamily: 'monospace', fontSize: 8.5, color: Colors.amberAccent)),
+                            const Text('Estimated Program Run Time', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                            Text(limits['estTime']!, style: const TextStyle(fontFamily: 'monospace', fontSize: 9, color: Colors.amberAccent)),
                           ],
                         ),
                       ),
@@ -1145,7 +1044,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ),
                 const SizedBox(height: 3),
                 Expanded(
-                  flex: 48,
+                  flex: 45,
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
@@ -1157,72 +1056,32 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       children: [
                         Row(
                           children: [
-                            Expanded(child: classicMachBtn('Cycle Start\n(Alt-R)', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 30, fontSize: 8)),
+                            Expanded(child: classicMachBtn('Cycle Start\n(Alt-R)', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 32, fontSize: 8)),
                             const SizedBox(width: 3),
-                            Expanded(child: classicMachBtn('Rewind\n(Crtl-W)', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 30, fontSize: 8)),
+                            Expanded(child: classicMachBtn('Rewind\n(Crtl-W)', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 32, fontSize: 8)),
                             const SizedBox(width: 3),
-                            Expanded(child: classicMachBtn('Single BLK\n(Alt-N)', singleBlock ? Colors.amber.shade800 : const Color(0xFF333B48), () => setState(() => singleBlock = !singleBlock), height: 30, fontSize: 8)),
+                            Expanded(child: classicMachBtn('Single BLK\n(Alt-N)', singleBlock ? Colors.amber.shade800 : const Color(0xFF333B48), () => setState(() => singleBlock = !singleBlock), height: 32, fontSize: 8)),
                           ],
                         ),
                         Row(
                           children: [
-                            Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 30, fontSize: 8)),
+                            Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 32, fontSize: 8)),
                             const SizedBox(width: 3),
-                            Expanded(child: classicMachBtn('Stop\n(Alt-S)', Colors.red.shade900, () => sendCommand('STOP'), height: 30, fontSize: 8)),
+                            Expanded(child: classicMachBtn('Stop\n(Alt-S)', Colors.red.shade900, () => sendCommand('STOP'), height: 32, fontSize: 8)),
                             const SizedBox(width: 3),
-                            Expanded(
-                              child: classicMachBtn(
-                                'Reverse\nRun',
-                                reverseRun ? Colors.purple.shade800 : Colors.blueGrey.shade700,
-                                () => setState(() {
-                                  reverseRun = !reverseRun;
-                                  statusMessage = reverseRun ? 'Reverse Run Enabled' : 'Forward Run Enabled';
-                                }),
-                                height: 30,
-                                fontSize: 8,
-                              ),
-                            ),
+                            Expanded(child: classicMachBtn('Reverse\nRun', Colors.blueGrey.shade700, () => setState(() => statusMessage = 'Reverse Run Active'), height: 32, fontSize: 8)),
                           ],
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 3),
-                SizedBox(
-                  height: 32,
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => sendCommand('RESET'),
-                        child: Container(
-                          width: 90,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: estop ? Colors.red.shade700 : Colors.green.shade700,
-                            border: Border.all(color: estop ? Colors.amber : Colors.greenAccent, width: 1.5),
-                          ),
-                          child: Text(estop ? 'Reset' : 'Active', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(child: classicMachBtn('G-Codes', const Color(0xFF333B48), () => showCodesDialog(true), height: 28, fontSize: 7.5)),
-                      const SizedBox(width: 2),
-                      Expanded(child: classicMachBtn('M-Codes', const Color(0xFF333B48), () => showCodesDialog(false), height: 28, fontSize: 7.5)),
-                      const SizedBox(width: 2),
-                      Expanded(child: classicMachBtn('History', Colors.blueGrey.shade700, showHistoryDialog, height: 28, fontSize: 7.5)),
-                      const SizedBox(width: 2),
-                      Expanded(child: classicMachBtn('Clear', const Color(0xFF333B48), () => setState(() => mdiHistory.clear()), height: 28, fontSize: 7.5)),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
           const SizedBox(width: 4),
-
           Expanded(
-            flex: 64,
+            flex: 65,
             child: Column(
               children: [
                 SizedBox(
@@ -1252,63 +1111,42 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             color: const Color(0xFF232731),
                             border: Border.all(color: Colors.grey.shade700),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Center(child: Text('Program Limits', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.cyanAccent))),
-                                    limitRangeRow('X Range', limits['xMin']!, limits['xMax']!),
-                                    limitRangeRow('Y Range', limits['yMin']!, limits['yMax']!),
-                                    limitRangeRow('Z Range', limits['zMin']!, limits['zMax']!),
-                                    limitRangeRow('A Range', limits['aMin']!, limits['aMax']!),
-                                    Container(
-                                      height: 15,
-                                      alignment: Alignment.center,
-                                      color: Colors.black,
-                                      child: Text(
-                                        machineCoords ? 'Machine Coordinates' : 'Absolute Coordinates',
-                                        style: TextStyle(fontSize: 7.5, color: machineCoords ? Colors.redAccent : Colors.amber, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              SizedBox(
-                                width: 52,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    classicMachBtn(
-                                      'Display\nMode',
-                                      const Color(0xFF333B48),
-                                      () => setState(() {
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Program Limits', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                  Column(
+                                    children: [
+                                      classicMachBtn('Display\nMode', const Color(0xFF333B48), () => setState(() {
                                         toolpathDisplayMode = (toolpathDisplayMode + 1) % 3;
                                         statusMessage = 'Toolpath View: ${modeNames[toolpathDisplayMode]}';
-                                      }),
-                                      height: 36,
-                                      fontSize: 7,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    classicMachBtn(
-                                      'Regen.\nToolpath',
-                                      const Color(0xFF333B48),
-                                      () {
+                                      }), height: 22, width: 50, fontSize: 6.5),
+                                      const SizedBox(height: 2),
+                                      classicMachBtn('Regen.\nToolpath', const Color(0xFF333B48), () {
                                         if (gcode.isNotEmpty) {
                                           setState(() {
                                             result = GCodeParser.parse(gcode);
-                                            statusMessage = 'Toolpath Regenerated (${result!.movements} moves)';
+                                            statusMessage = 'Toolpath Regenerated';
                                           });
                                         }
-                                      },
-                                      height: 36,
-                                      fontSize: 7,
-                                    ),
-                                  ],
-                                ),
+                                      }, height: 22, width: 50, fontSize: 6.5),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              limitRangeRow('X Range', limits['xMin']!, limits['xMax']!),
+                              limitRangeRow('Y Range', limits['yMin']!, limits['yMax']!),
+                              limitRangeRow('Z Range', limits['zMin']!, limits['zMax']!),
+                              limitRangeRow('A Range', limits['aMin']!, limits['aMax']!),
+                              Container(
+                                height: 16,
+                                alignment: Alignment.center,
+                                color: Colors.black,
+                                child: const Text('Absolute Coordinates', style: TextStyle(fontSize: 7.5, color: Colors.amber, fontWeight: FontWeight.bold)),
                               ),
                             ],
                           ),
@@ -1336,95 +1174,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         Text(label, style: const TextStyle(fontSize: 7.5, color: Colors.white70)),
         Row(
           children: [
-            Container(
-              width: 46, height: 15,
-              alignment: Alignment.center,
-              color: Colors.black,
-              child: Text(minVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7, color: Colors.greenAccent)),
-            ),
+            Container(width: 48, height: 16, alignment: Alignment.center, color: Colors.black, child: Text(minVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7.5, color: Colors.greenAccent))),
             const SizedBox(width: 2),
-            Container(
-              width: 46, height: 15,
-              alignment: Alignment.center,
-              color: Colors.black,
-              child: Text(maxVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7, color: Colors.greenAccent)),
-            ),
+            Container(width: 48, height: 16, alignment: Alignment.center, color: Colors.black, child: Text(maxVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7.5, color: Colors.greenAccent))),
           ],
         ),
       ],
-    );
-  }
-
-  Widget buildBottomResetAndCodesBar() {
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => sendCommand('RESET'),
-            child: Container(
-              width: 110,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: estop ? Colors.red.shade700 : Colors.green.shade700,
-                border: Border.all(color: estop ? Colors.amber : Colors.greenAccent, width: 1.5),
-              ),
-              child: Text(estop ? 'Reset' : 'Active', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
-            ),
-          ),
-          const SizedBox(width: 6),
-          classicMachBtn('G-Codes', const Color(0xFF333B48), () => showCodesDialog(true), height: 30, width: 65, fontSize: 8.5),
-          const SizedBox(width: 3),
-          classicMachBtn('M-Codes', const Color(0xFF333B48), () => showCodesDialog(false), height: 30, width: 65, fontSize: 8.5),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              height: 30,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white24)),
-              child: Text(
-                mdiHistory.isEmpty ? 'Last MDI: None' : 'Last MDI: ${mdiHistory.first}',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.lightGreenAccent),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          classicMachBtn('History', Colors.blueGrey.shade700, showHistoryDialog, height: 30, width: 60, fontSize: 8.5),
-          const SizedBox(width: 3),
-          classicMachBtn('Clear', const Color(0xFF333B48), () => setState(() => mdiHistory.clear()), height: 30, width: 50, fontSize: 8.5),
-        ],
-      ),
-    );
-  }
-
-  Widget mdiDroRow(String axis, double value, double scaleVal, VoidCallback onZero, VoidCallback onScaleToggle) {
-    double displayVal = showToGo ? 0.0 : value;
-    return SizedBox(
-      height: 25,
-      child: Row(
-        children: [
-          Expanded(flex: 7, child: droBox(axis, displayVal, onZero, height: 25)),
-          const SizedBox(width: 2),
-          Expanded(
-            flex: 3,
-            child: InkWell(
-              onTap: onScaleToggle,
-              child: Container(
-                height: 25,
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                alignment: Alignment.centerRight,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  border: Border.all(color: scaleVal != 1.0 ? Colors.amber : Colors.grey.shade700),
-                ),
-                child: Text(scaleVal.toStringAsFixed(3), style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: scaleVal != 1.0 ? Colors.amber : Colors.white70)),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1463,6 +1218,46 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 );
               },
             ),
+    );
+  }
+
+  Widget buildProgramRunButtonsContainer() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF232731),
+        border: Border.all(color: Colors.grey.shade700),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: classicMachBtn('Cycle Start\n<Alt-R>', Colors.green.shade800, () => sendCommand('CYCLE_START'), height: 34)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Feed Hold\n<Spc>', Colors.amber.shade800, () => sendCommand('FEED_HOLD'), height: 34)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
+              const SizedBox(width: 2),
+              Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
+              const SizedBox(width: 2),
+              Expanded(
+                child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
+                  setState(() {
+                    simulatorIndex = selectedLineIndex;
+                    activeLineIndex = selectedLineIndex;
+                  });
+                }, height: 26),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1593,55 +1388,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               ? const Center(child: Text('Toolpath Window', style: TextStyle(color: Colors.white24, fontSize: 10)))
               : CustomPaint(painter: Mach3ToolpathPainter(result!.points, simulatorIndex, displayMode: toolpathDisplayMode), child: const SizedBox.expand()),
           Positioned(
-            top: 3, left: 5,
-            child: Text('Tool:$currentTool', style: const TextStyle(fontSize: 9, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+            top: 2, right: 4,
+            child: Text('Tool:$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
           ),
         ],
-      ),
-    );
-  }
-
-  void showHistoryDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF232731),
-        title: const Text('MDI Command History', style: TextStyle(fontSize: 13, color: Colors.cyanAccent)),
-        content: SizedBox(
-          width: 320, height: 180,
-          child: mdiHistory.isEmpty
-              ? const Center(child: Text('No commands executed yet.'))
-              : ListView.builder(
-                  itemCount: mdiHistory.length,
-                  itemBuilder: (_, i) => ListTile(
-                    dense: true,
-                    title: Text(mdiHistory[i], style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.lightGreenAccent)),
-                    onTap: () {
-                      mdiController.text = mdiHistory[i];
-                      Navigator.pop(context);
-                    },
-                  ),
-                ),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-      ),
-    );
-  }
-
-  void showCodesDialog(bool isGCode) {
-    final items = isGCode
-        ? ['G00 - Rapid Positioning', 'G01 - Linear Interpolation', 'G02/G03 - Arc CW/CCW', 'G20/G21 - Inch/MM', 'G28 - Return Home', 'G54..G59 - Work Offsets', 'G90/G91 - Abs/Inc Mode']
-        : ['M00 - Program Stop', 'M01 - Optional Stop', 'M03/M04 - Spindle ON', 'M05 - Spindle Stop', 'M06 - Tool Change', 'M08/M09 - Coolant ON/OFF', 'M30 - Program End & Rewind'];
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF232731),
-        title: Text(isGCode ? 'Standard G-Codes' : 'Standard M-Codes', style: const TextStyle(fontSize: 13, color: Colors.amber)),
-        content: SizedBox(
-          width: 340, height: 200,
-          child: ListView(children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList()),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
@@ -1720,6 +1470,124 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
+  Widget mdiDroRow(String axis, double value, double scaleVal, VoidCallback onZero, VoidCallback onScaleToggle) {
+    double displayVal = showToGo ? 0.0 : value;
+    return SizedBox(
+      height: 25,
+      child: Row(
+        children: [
+          Expanded(flex: 7, child: droBox(axis, displayVal, onZero, height: 25)),
+          const SizedBox(width: 2),
+          Expanded(
+            flex: 3,
+            child: InkWell(
+              onTap: onScaleToggle,
+              child: Container(
+                height: 25,
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                alignment: Alignment.centerRight,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: scaleVal != 1.0 ? Colors.amber : Colors.grey.shade700),
+                ),
+                child: Text(scaleVal.toStringAsFixed(3), style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: scaleVal != 1.0 ? Colors.amber : Colors.white70)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildBottomResetAndCodesBar() {
+    return SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => sendCommand('RESET'),
+            child: Container(
+              width: 110,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: estop ? Colors.red.shade700 : Colors.green.shade700,
+                border: Border.all(color: estop ? Colors.amber : Colors.greenAccent, width: 1.5),
+              ),
+              child: Text(estop ? 'Reset' : 'Active', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(width: 6),
+          classicMachBtn('G-Codes', const Color(0xFF333B48), () => showCodesDialog(true), height: 30, width: 65, fontSize: 8.5),
+          const SizedBox(width: 3),
+          classicMachBtn('M-Codes', const Color(0xFF333B48), () => showCodesDialog(false), height: 30, width: 65, fontSize: 8.5),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              height: 30,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white24)),
+              child: Text(
+                mdiHistory.isEmpty ? 'Last MDI: None' : 'Last MDI: ${mdiHistory.first}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.lightGreenAccent),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          classicMachBtn('History', Colors.blueGrey.shade700, showHistoryDialog, height: 30, width: 60, fontSize: 8.5),
+          const SizedBox(width: 3),
+          classicMachBtn('Clear', const Color(0xFF333B48), () => setState(() => mdiHistory.clear()), height: 30, width: 50, fontSize: 8.5),
+        ],
+      ),
+    );
+  }
+
+  void showHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF232731),
+        title: const Text('MDI Command History', style: TextStyle(fontSize: 13, color: Colors.cyanAccent)),
+        content: SizedBox(
+          width: 320, height: 180,
+          child: mdiHistory.isEmpty
+              ? const Center(child: Text('No commands executed yet.'))
+              : ListView.builder(
+                  itemCount: mdiHistory.length,
+                  itemBuilder: (_, i) => ListTile(
+                    dense: true,
+                    title: Text(mdiHistory[i], style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.lightGreenAccent)),
+                    onTap: () {
+                      mdiController.text = mdiHistory[i];
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  void showCodesDialog(bool isGCode) {
+    final items = isGCode
+        ? ['G00 - Rapid Positioning', 'G01 - Linear Interpolation', 'G02/G03 - Arc CW/CCW', 'G20/G21 - Inch/MM', 'G28 - Return Home', 'G54..G59 - Work Offsets', 'G90/G91 - Abs/Inc Mode']
+        : ['M00 - Program Stop', 'M01 - Optional Stop', 'M03/M04 - Spindle ON', 'M05 - Spindle Stop', 'M06 - Tool Change', 'M08/M09 - Coolant ON/OFF', 'M30 - Program End & Rewind'];
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF232731),
+        title: Text(isGCode ? 'Standard G-Codes' : 'Standard M-Codes', style: const TextStyle(fontSize: 13, color: Colors.amber)),
+        content: SizedBox(
+          width: 340, height: 200,
+          child: ListView(children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList()),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
   Widget buildOffsetsTab() => const Center(child: Text('Offsets View'));
   Widget buildSettingsTab() => const Center(child: Text('Settings View'));
   Widget buildDiagnosticsTab() => const Center(child: Text('Diagnostics View'));
@@ -1739,29 +1607,24 @@ class Mach3ToolpathPainter extends CustomPainter {
 
     if (points.isEmpty) return;
 
-    double getH(GPoint p) => displayMode == 0 ? (p.x - p.y * 0.4) : p.x;
-    double getV(GPoint p) => displayMode == 0 ? (p.y * 0.6 + p.z * 0.8) : (displayMode == 1 ? p.y : p.z);
+    double minX = points.map((p) => p.x).reduce(math.min);
+    double maxX = points.map((p) => p.x).reduce(math.max);
+    double minY = points.map((p) => p.y).reduce(math.min);
+    double maxY = points.map((p) => p.y).reduce(math.max);
 
-    double minH = points.map(getH).reduce(math.min);
-    double maxH = points.map(getH).reduce(math.max);
-    double minV = points.map(getV).reduce(math.min);
-    double maxV = points.map(getV).reduce(math.max);
+    final dx = maxX - minX;
+    final dy = maxY - minY;
+    final scale = math.min((size.width - 20) / (dx == 0 ? 1.0 : dx), (size.height - 20) / (dy == 0 ? 1.0 : dy));
 
-    final dh = maxH - minH;
-    final dv = maxV - minV;
-    final scale = math.min((size.width - 24) / (dh == 0 ? 1.0 : dh), (size.height - 24) / (dv == 0 ? 1.0 : dv));
+    Offset mapPoint(GPoint p) => Offset(10 + (p.x - minX) * scale, size.height - 10 - (p.y - minY) * scale);
 
-    Offset mapPoint(GPoint p) => Offset(12 + (getH(p) - minH) * scale, size.height - 12 - (getV(p) - minV) * scale);
-
-    final rapidPaint = Paint()..color = Colors.redAccent.withOpacity(0.5)..strokeWidth = 0.8;
-    final feedPaint = Paint()..color = Colors.blueAccent..strokeWidth = 1.1;
-
+    final fullPaint = Paint()..color = Colors.white24..strokeWidth = 1;
     for (int i = 1; i < points.length; i++) {
-      canvas.drawLine(mapPoint(points[i - 1]), mapPoint(points[i]), points[i].rapid ? rapidPaint : feedPaint);
+      canvas.drawLine(mapPoint(points[i - 1]), mapPoint(points[i]), fullPaint);
     }
 
     int limit = math.min(currentIndex, points.length);
-    final activePaint = Paint()..color = const Color(0xFF00FF41)..strokeWidth = 1.6;
+    final activePaint = Paint()..color = const Color(0xFF00FF41)..strokeWidth = 1.5;
     for (int i = 1; i < limit; i++) {
       canvas.drawLine(mapPoint(points[i - 1]), mapPoint(points[i]), activePaint);
     }
