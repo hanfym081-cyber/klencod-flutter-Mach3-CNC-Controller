@@ -169,6 +169,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   
   final ScrollController gcodeScrollController = ScrollController();
   final TextEditingController mdiController = TextEditingController();
+  final List<String> mdiHistory = ['-> Ready for MDI commands'];
 
   @override
   void initState() {
@@ -181,6 +182,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     simulatorTimer?.cancel();
     pcSocket?.destroy();
     gcodeScrollController.dispose();
+    mdiController.dispose();
     super.dispose();
   }
 
@@ -219,8 +221,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   void sendCommand(String cmd) {
     if (connected && pcSocket != null) {
       pcSocket!.write('$cmd\n');
-      return;
     }
+    setState(() {
+      mdiHistory.insert(0, 'EXEC: $cmd');
+    });
 
     if (cmd == 'RESET') {
       setState(() {
@@ -620,7 +624,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                // ================= مربعات Feed Rate و Spindle Speed بحجم مكونات طبيعي وواضح دون تصغير مبالغ فيه =================
                 SizedBox(
                   height: 124,
                   child: Row(
@@ -756,7 +759,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // ================= لوحة التول باث والـ Jog مع أزرار المحور A =================
           Expanded(
             flex: 3,
             child: Column(
@@ -854,6 +856,116 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
+  // ================= شاشة الـ MDI المطابقة تماماً لصورة Mach3 الأصلية =================
+  Widget buildMdiTab() {
+    return Padding(
+      padding: const EdgeInsets.all(4.0),
+      child: Row(
+        children: [
+          // القسم الأيسر: حقل إدخال الأوامر وسجل التنفيذ
+          Expanded(
+            flex: 7,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF232731),
+                    border: Border.all(color: Colors.grey.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: mdiController,
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.greenAccent),
+                          decoration: InputDecoration(
+                            hintText: 'Enter MDI Command (e.g., G0 X0 Y0)',
+                            hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
+                            filled: true,
+                            fillColor: Colors.black,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(2), borderSide: const BorderSide(color: Colors.grey)),
+                          ),
+                          onSubmitted: (val) {
+                            if (val.trim().isNotEmpty) {
+                              sendCommand(val.trim());
+                              mdiController.clear();
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ElevatedButton(
+                        onPressed: () {
+                          final cmd = mdiController.text.trim();
+                          if (cmd.isNotEmpty) {
+                            sendCommand(cmd);
+                            mdiController.clear();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal.shade800,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+                        ),
+                        child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0A0C10),
+                      border: Border.all(color: Colors.grey.shade700, width: 1.5),
+                    ),
+                    child: ListView.builder(
+                      itemCount: mdiHistory.length,
+                      itemBuilder: (context, index) {
+                        return Text(
+                          mdiHistory[index],
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.lightGreenAccent),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          // القسم الأيمن: أزرار التحكم الإضافية المطابقة لصورة الأصل (Teach / Load / Variables)
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF232731),
+                border: Border.all(color: Colors.grey.shade700),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  classicMachBtn('Load / Edit', const Color(0xFF333B48), openFile, height: 38),
+                  classicMachBtn('Stop\n(Esc)', Colors.red.shade900, () => sendCommand('STOP'), height: 38),
+                  classicMachBtn('Start\nTeach', Colors.green.shade800, () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Teach Started'))), height: 38),
+                  classicMachBtn('Stop\nTeach', Colors.amber.shade800, () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Teach Stopped'))), height: 38),
+                  classicMachBtn('Set Variable\nPosition', Colors.blueGrey.shade700, () {}, height: 38),
+                  classicMachBtn('Gets Variable\nPosition', Colors.blueGrey.shade700, () {}, height: 38),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget droBox(String axis, double value, VoidCallback onZero) {
     return Container(
       height: 26,
@@ -885,6 +997,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget classicMachBtn(String text, Color bg, VoidCallback onTap, {double height = 28}) {
     return SizedBox(
+      width: double.infinity,
       height: height,
       child: ElevatedButton(
         onPressed: onTap,
@@ -893,7 +1006,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           padding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2), side: const BorderSide(color: Colors.white24)),
         ),
-        child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white)),
+        child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
       ),
     );
   }
@@ -940,7 +1053,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  Widget buildMdiTab() => Padding(padding: const EdgeInsets.all(10), child: TextField(controller: mdiController, decoration: const InputDecoration(labelText: 'MDI Command')));
   Widget buildFullToolpathTab() => const Center(child: Text('Full Toolpath View'));
   Widget buildOffsetsTab() => const Center(child: Text('Offsets View'));
   Widget buildSettingsTab() => const Center(child: Text('Settings View'));
