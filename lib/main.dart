@@ -256,7 +256,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     else if (cmd == 'JOG:Y+') setState(() => droY += jogStep);
     else if (cmd == 'JOG:Y-') setState(() => droY -= jogStep);
     else if (cmd == 'JOG:Z+') setState(() => droZ += jogStep);
-    else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep); // تم إصلاحها هنا لتستجيب بدقة
+    else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep);
     else if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; });
     else if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
   }
@@ -288,11 +288,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         simulatorIndex++;
       });
 
+      // --- حل مشكلة هروب المؤشر وتثبيته في منتصف شاشة الأكواد تماماً ---
       if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
-        double offset = activeLineIndex * 18.0;
-        if (offset <= gcodeScrollController.position.maxScrollExtent) {
-          gcodeScrollController.jumpTo(offset);
+        // ارتفاع السطر الواحد في القائمة يقدر بـ 18 بيكسل
+        double targetScroll = (activeLineIndex * 18.0) - 80.0;
+        if (targetScroll < 0) targetScroll = 0;
+        if (targetScroll > gcodeScrollController.position.maxScrollExtent) {
+          targetScroll = gcodeScrollController.position.maxScrollExtent;
         }
+        gcodeScrollController.jumpTo(targetScroll);
       }
     });
     setState(() {});
@@ -459,8 +463,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             itemBuilder: (context, index) {
                               bool isActive = index == activeLineIndex;
                               return Container(
+                                height: 18, // تثبيت ارتفاع دقيق للسطر لمنع اختلال التمرير
                                 color: isActive ? Colors.blue.shade900 : Colors.transparent,
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                alignment: Alignment.centerLeft,
                                 child: Text(
                                   result!.rawLines[index],
                                   style: TextStyle(
@@ -753,7 +759,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           children: [
                             jogKey('Y-', () => sendCommand('JOG:Y-')),
                             const SizedBox(width: 12),
-                            jogKey('Z-', () => sendCommand('JOG:Z-'), Colors.amber), // تم تصحيح الأمر هنا
+                            jogKey('Z-', () => sendCommand('JOG:Z-'), Colors.amber),
                           ],
                         ),
                         const Spacer(),
