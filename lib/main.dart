@@ -40,7 +40,9 @@ class GPoint {
   final double z;
   final bool rapid;
   final int lineIndex;
-  const GPoint(this.x, this.y, this.z, this.rapid, this.lineIndex);
+  final double feed;
+  final double spindle;
+  const GPoint(this.x, this.y, this.z, this.rapid, this.lineIndex, this.feed, this.spindle);
 }
 
 class GCodeResult {
@@ -63,6 +65,8 @@ class GCodeParser {
     final points = <GPoint>[];
     final rawLines = source.split(RegExp(r'\r?\n'));
     double x = 0, y = 0, z = 0;
+    double currentFeed = 100.0;
+    double currentSpindle = 12000.0;
     double scale = 1;
     bool absolute = true;
     bool rapid = false;
@@ -92,6 +96,9 @@ class GCodeParser {
         if (g == 1) rapid = false;
       }
 
+      if (values.containsKey('F')) currentFeed = values['F']!;
+      if (values.containsKey('S')) currentSpindle = values['S']!;
+
       if (values.containsKey('X') || values.containsKey('Y') || values.containsKey('Z')) {
         final oldX = x, oldY = y, oldZ = z;
         if (values.containsKey('X')) x = absolute ? (values['X']! * scale) : x + (values['X']! * scale);
@@ -100,7 +107,7 @@ class GCodeParser {
 
         distance += math.sqrt(math.pow(x - oldX, 2) + math.pow(y - oldY, 2) + math.pow(z - oldZ, 2));
         movements++;
-        points.add(GPoint(x, y, z, rapid, i));
+        points.add(GPoint(x, y, z, rapid, i, currentFeed, currentSpindle));
       }
     }
     return GCodeResult(
@@ -137,18 +144,20 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool machineCoords = false;
   bool estop = true; 
   bool spindleOn = false;
-  int spindleRpm = 12000;
+  
+  double currentFeedRate = 100.0;
+  double spindleRpm = 12000.0;
   int feedOverride = 100;
   int rapidOverride = 100;
   bool optionalStop = false;
   bool blockDelete = false;
+  bool cvMode = true; // وضع الحركة المستمرة (Constant Velocity)
   int currentTool = 1;
   double jogStep = 1.0;
 
   Timer? simulatorTimer;
   int simulatorIndex = 0;
   int activeLineIndex = -1;
-  bool isSimulating = false;
   final ScrollController gcodeScrollController = ScrollController();
   final TextEditingController mdiController = TextEditingController();
 
@@ -230,6 +239,14 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = 0;
         droY = 0;
         droZ = 0;
+        currentFeedRate = 100.0;
+        spindleRpm = 12000.0;
+      });
+    } else if (cmd == 'REF_ALL_HOME') {
+      setState(() {
+        droX = 0.0;
+        droY = 0.0;
+        droZ = 0.0;
       });
     } else if (cmd == 'ZERO:X') setState(() => droX = 0.0);
     else if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
@@ -244,6 +261,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     else if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
   }
 
+  bool get isSimulating => simulatorTimer?.isActive ?? false;
+
   void startSimulation() {
     if (result == null || result!.points.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No G-Code file loaded for simulation!')));
@@ -251,7 +270,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     }
     if (isSimulating) return;
 
-    setState(() => isSimulating = true);
     int interval = (100 / (feedOverride == 0 ? 100 : feedOverride) * 80).round();
 
     simulatorTimer = Timer.periodic(Duration(milliseconds: math.max(15, interval)), (timer) {
@@ -264,22 +282,24 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = pt.x;
         droY = pt.y;
         droZ = pt.z;
+        currentFeedRate = pt.feed;
+        spindleRpm = pt.spindle;
         activeLineIndex = pt.lineIndex;
         simulatorIndex++;
       });
 
-      // --- تثبيت السطر النشط ليظل واضحاً وفي منتصف النافذة تماماً ولا يختفي ---
       if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
-        double targetOffset = (activeLineIndex * 18.0) - 60.0; // تمرير ذكي يبقي السطر في المنتصف
-        targetOffset = targetOffset.clamp(0.0, gcodeScrollController.position.maxScrollExtent);
-        gcodeScrollController.jumpTo(targetOffset);
+        double estimatedOffset = activeLineIndex * 16.0;
+        double maxScroll = gcodeScrollController.position.maxScrollExtent;
+        gcodeScrollController.jumpTo(estimatedOffset.clamp(0.0, maxScroll));
       }
     });
+    setState(() {});
   }
 
   void stopSimulation() {
     simulatorTimer?.cancel();
-    setState(() => isSimulating = false);
+    setState(() {});
   }
 
   void parsePcData(String data) {
@@ -328,6 +348,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // شريط القوائم العلوي المطابق لـ Mach3 مع مؤشرات الـ Modals
             Container(
               height: 32,
               color: const Color(0xFF2B303B),
@@ -339,6 +360,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   machTab(3, 'Offsets Alt-5'),
                   machTab(4, 'Settings Alt-6'),
                   machTab(5, 'Diagnostics Alt-7'),
+                  const VerticalDivider(color: Colors.white24, width: 1),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Text('Mill-> G15 G17 G21 G90 G54', style: TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.amberAccent)),
+                  ),
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -365,6 +391,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
+            // شريط الحالة السفلي الأصلي
             Container(
               height: 22,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -414,6 +441,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
+          // العمود الأول: نافذة الأكواد وأزرار التحكم مع إضافة Set Next Line ومؤشر السطر
           Expanded(
             flex: 3,
             child: Column(
@@ -474,7 +502,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
                           const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Single Blk', const Color(0xFF333B48), () {}, height: 26)),
+                          Expanded(child: classicMachBtn('Set Next Line', const Color(0xFF333B48), () {}, height: 26)),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -509,6 +537,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
+          // العمود الثاني: الـ DROs وصناديق التغذية والمغزل المطابقة للأصل تماماً
           Expanded(
             flex: 4,
             child: Column(
@@ -564,8 +593,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   height: 125,
                   child: Row(
                     children: [
+                      // صندوق Feed Rate المطابق تماماً لشاشة 1024.set
                       Expanded(
-                        flex: 4,
+                        flex: 5,
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -575,33 +605,21 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Tool Information', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
-                              const Divider(height: 4, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('Tool: $currentTool', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                  smallBtn('Change', () => setState(() => currentTool = currentTool == 1 ? 2 : 1)),
+                                  const Text('Feed Rate', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                  InkWell(
+                                    onTap: () => setState(() => cvMode = !cvMode),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                      color: cvMode ? Colors.green.shade800 : Colors.blueGrey.shade800,
+                                      child: Text(cvMode ? 'CV Mode' : 'Exact Stop', style: const TextStyle(fontSize: 8)),
+                                    ),
+                                  ),
                                 ],
                               ),
-                              const Text('Dia: +0.0000', style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.cyanAccent)),
-                              const Text('H: +0.0000', style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.cyanAccent)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        flex: 6,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF232731),
-                            border: Border.all(color: Colors.grey.shade700),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                              const Divider(height: 2, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -614,19 +632,43 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   ),
                                 ],
                               ),
-                              const Divider(height: 4, color: Colors.white12),
+                              const SizedBox(height: 2),
+                              Text('F: ${currentFeedRate.toStringAsFixed(1)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
+                              const Text('Units/Min', style: TextStyle(fontSize: 9, color: Colors.white60)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      // صندوق Spindle Speed المطابق تماماً لشاشة 1024.set
+                      Expanded(
+                        flex: 5,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232731),
+                            border: Border.all(color: Colors.grey.shade700),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Spindle Speed', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
+                              const Divider(height: 2, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('RPM: $spindleRpm', style: const TextStyle(fontSize: 10, color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+                                  Text('RPM: ${spindleRpm.toInt()}', style: const TextStyle(fontSize: 10, color: Colors.amberAccent, fontWeight: FontWeight.bold)),
                                   classicMachBtn(
-                                    spindleOn ? 'SPN ON' : 'SPN OFF',
+                                    spindleOn ? 'ON' : 'OFF',
                                     spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
                                     () => sendCommand('SPINDLE_TOGGLE'),
-                                    height: 22,
+                                    height: 20,
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 2),
+                              Text('S: ${spindleRpm.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
+                              const Text('Spindle CW F5', style: TextStyle(fontSize: 9, color: Colors.white60)),
                             ],
                           ),
                         ),
@@ -638,6 +680,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
+          // العمود الثالث: نافذة التول باث والـ Jog
           Expanded(
             flex: 3,
             child: Column(
@@ -716,7 +759,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           children: [
                             jogKey('Y-', () => sendCommand('JOG:Y-')),
                             const SizedBox(width: 12),
-                            jogKey('Z-', () => sendCommand('JOG:Z-'), Colors.amber),
+                            jogKey('Z-', () => sendCommand('Z-'), Colors.amber),
                           ],
                         ),
                         const Spacer(),
