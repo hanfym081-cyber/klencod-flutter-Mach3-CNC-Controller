@@ -535,7 +535,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(width: 2),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
                           Expanded(
@@ -588,7 +588,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             const SizedBox(height: 2),
                             droBox('Z', droZ, () => sendCommand('ZERO:Z')),
                             const SizedBox(height: 2),
-                            droBox('A', droA, () => sendCommand('ZERO:A')), // تم تعديل المحور الرابع ليصبح A
+                            droBox('A', droA, () => sendCommand('ZERO:A')), // تم تحديثه ليصبح A
                             const SizedBox(height: 2),
                             Row(
                               children: [
@@ -620,9 +620,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                // ================= مربعات Feed Rate و Spindle Speed بحجم متناسق لا يغطي زر الـ Reset =================
+                // ================= مربعات Feed Rate و Spindle Speed مصغرة وبحجم آمن لا يغطي زر Reset =================
                 SizedBox(
-                  height: 122,
+                  height: 110,
                   child: Row(
                     children: [
                       Expanded(
@@ -639,7 +639,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Feed Rate', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                  const Text('Feed Rate', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
                                   InkWell(
                                     onTap: () => setState(() => cvMode = !cvMode),
                                     child: Container(
@@ -650,18 +650,18 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   ),
                                 ],
                               ),
-                              const Divider(height: 2, color: Colors.white24),
+                              const Divider(height: 1, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('FRO %', style: TextStyle(fontSize: 8, color: Colors.white60)),
-                                  Text('$feedOverride', style: const TextStyle(fontSize: 9, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                                  const Text('FRO %', style: TextStyle(fontSize: 7, color: Colors.white60)),
+                                  Text('$feedOverride', style: const TextStyle(fontSize: 8, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                                 ],
                               ),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Rapid', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                                  const Text('Rapid', style: TextStyle(fontSize: 7, color: Colors.white60)),
                                   Row(
                                     children: [
                                       mediumBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
@@ -680,7 +680,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 ],
                               ),
                               const SizedBox(height: 1),
-                              Text('Feed: ${currentFeedRate.toStringAsFixed(1)}', style: const TextStyle(fontSize: 8, fontFamily: 'monospace', color: Colors.cyanAccent)),
+                              Text('Feed: ${currentFeedRate.toStringAsFixed(1)}', style: const TextStyle(fontSize: 7, fontFamily: 'monospace', color: Colors.cyanAccent)),
                             ],
                           ),
                         ),
@@ -700,20 +700,20 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Spindle Speed', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.amber)),
-                                  Text('SRO % $spindleOverride', style: const TextStyle(fontSize: 8, color: Colors.greenAccent)),
+                                  const Text('Spindle Speed', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber)),
+                                  Text('SRO % $spindleOverride', style: const TextStyle(fontSize: 7, color: Colors.greenAccent)),
                                 ],
                               ),
-                              const Divider(height: 2, color: Colors.white24),
+                              const Divider(height: 1, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('CW F5', style: TextStyle(fontSize: 8, color: Colors.white70)),
+                                  const Text('CW F5', style: TextStyle(fontSize: 7, color: Colors.white70)),
                                   classicMachBtn(
                                     spindleOn ? 'ON' : 'OFF',
                                     spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
                                     () => sendCommand('SPINDLE_TOGGLE'),
-                                    height: 16,
+                                    height: 14,
                                   ),
                                 ],
                               ),
@@ -721,7 +721,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('RPM Ctrl', style: TextStyle(fontSize: 8, color: Colors.white60)),
+                                  const Text('RPM Ctrl', style: TextStyle(fontSize: 7, color: Colors.white60)),
                                   Row(
                                     children: [
                                       mediumBtn('-', () => setState(() => spindleOverride = math.max(10, spindleOverride - 10))),
@@ -741,8 +741,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('RPM', style: TextStyle(fontSize: 8)),
-                                  Text('${spindleRpm.toInt()}', style: const TextStyle(fontSize: 8, fontFamily: 'monospace', color: Colors.cyanAccent)),
+                                  const Text('RPM', style: TextStyle(fontSize: 7)),
+                                  Text('${spindleRpm.toInt()}', style: const TextStyle(fontSize: 7, fontFamily: 'monospace', color: Colors.cyanAccent)),
                                 ],
                               ),
                             ],
@@ -756,7 +756,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // ================= شاشة التول باث والـ Jog مع إضافة زري A+ و A- =================
+          // ================= لوحة التول باث والـ Jog مع أزرار المحور A (+ و -) =================
           Expanded(
             flex: 3,
             child: Column(
@@ -816,10 +816,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             jogKey('Y+', () => sendCommand('JOG:Y+')),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             jogKey('Z+', () => sendCommand('JOG:Z+'), Colors.amber),
-                            const SizedBox(width: 6),
-                            jogKey('A+', () => sendCommand('JOG:A+'), Colors.purpleAccent), // زر A الموجب
+                            const SizedBox(width: 4),
+                            jogKey('A+', () => sendCommand('JOG:A+'), Colors.purpleAccent), // زر A+
                           ],
                         ),
                         const SizedBox(height: 2),
@@ -836,10 +836,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             jogKey('Y-', () => sendCommand('JOG:Y-')),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             jogKey('Z-', () => sendCommand('JOG:Z-'), Colors.amber),
-                            const SizedBox(width: 6),
-                            jogKey('A-', () => sendCommand('JOG:A-'), Colors.purpleAccent), // زر A السالب
+                            const SizedBox(width: 4),
+                            jogKey('A-', () => sendCommand('JOG:A-'), Colors.purpleAccent), // زر A-
                           ],
                         ),
                       ],
@@ -856,7 +856,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget droBox(String axis, double value, VoidCallback onZero) {
     return Container(
-      height: 28,
+      height: 26,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.black,
@@ -873,7 +873,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             value.toStringAsFixed(4),
             style: TextStyle(
               fontFamily: 'monospace',
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.bold,
               color: machineCoords ? Colors.redAccent : const Color(0xFF00FF41),
             ),
@@ -883,7 +883,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  Widget classicMachBtn(String text, Color bg, VoidCallback onTap, {double height = 30}) {
+  Widget classicMachBtn(String text, Color bg, VoidCallback onTap, {double height = 28}) {
     return SizedBox(
       height: height,
       child: ElevatedButton(
@@ -898,18 +898,17 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // أزرار متوسطة الحجم ومتناسقة للموجب والسالب في المغزل والتغذية
   Widget mediumBtn(String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(
           color: const Color(0xFF434C5E),
           border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
           borderRadius: BorderRadius.circular(2),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+        child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
       ),
     );
   }
@@ -927,8 +926,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget jogKey(String label, VoidCallback onTap, [Color color = Colors.cyanAccent]) {
     return SizedBox(
-      width: 35,
-      height: 22,
+      width: 32,
+      height: 20,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
@@ -936,7 +935,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           padding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2), side: BorderSide(color: color.withOpacity(0.5))),
         ),
-        child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
+        child: Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: color)),
       ),
     );
   }
