@@ -288,7 +288,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         simulatorIndex++;
       });
 
-      // --- تمرير مستقر يمنع هروب المؤشر للأعلى ---
       if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
         double targetScroll = (activeLineIndex * 18.0) - 80.0;
         if (targetScroll < 0) targetScroll = 0;
