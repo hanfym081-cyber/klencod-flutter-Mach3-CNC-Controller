@@ -234,7 +234,6 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void parsePcData(String data) {
-    // Expected format from PC script: DRO:X=10.5,Y=20.0,Z=-2.1;ESTOP=0
     try {
       if (data.startsWith('DRO:')) {
         final parts = data.substring(4).trim().split(';');
@@ -276,7 +275,6 @@ class _MainScreenState extends State<MainScreen> {
         result = parsed;
       });
 
-      // Send file content or path to PC if connected
       if (connected) {
         sendCommand('LOAD_FILE:${file.name}');
       }
@@ -327,100 +325,148 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget stat(String title, String value, IconData icon) {
-    return Card(
-      color: const Color(0xFF1B2430),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: Colors.cyan, size: 25),
-            const SizedBox(height: 9),
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Text(title, style: const TextStyle(color: Colors.white60)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- 1. Dashboard Page ---
+  // --- 1. Dashboard Page (Mach3 Industrial Layout) ---
   Widget dashboard() {
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       children: [
-        const Text('MACH3 WIFI CONTROL CENTER', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        const Text('Remote Android Companion for Mach3 PC', style: TextStyle(color: Colors.white60)),
-        const SizedBox(height: 15),
-        
-        // Connection Panel
-        panel(
-          'PC Wi-Fi Connection',
-          Column(
+        // Top Bar: Reset / E-Stop & Connection Status
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => sendCommand('RESET'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: estop ? Colors.red : Colors.red.shade900,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('RESET / E-STOP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: connected ? Colors.green.shade800 : Colors.orange.shade800,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                connected ? 'ONLINE' : 'OFFLINE',
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Giant DRO Readouts Box (Mach3 Style)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF05070A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.cyan.withOpacity(0.3), width: 1.5),
+          ),
+          child: Column(
+            children: [
+              machDroRow('X', droX, Colors.cyan),
+              const Divider(color: Colors.white12),
+              machDroRow('Y', droY, Colors.greenAccent),
+              const Divider(color: Colors.white12),
+              machDroRow('Z', droZ, Colors.orangeAccent),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Quick Cycle Control Buttons
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => sendCommand('CYCLE_START'),
+                icon: const Icon(Icons.play_arrow, color: Colors.white),
+                label: const Text('Cycle Start', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => sendCommand('FEED_HOLD'),
+                icon: const Icon(Icons.pause, color: Colors.white),
+                label: const Text('Feed Hold', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade800,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Program File Information Panel
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161F2C),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(connected ? Icons.check_circle : Icons.link_off, color: connected ? Colors.green : Colors.orange),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(connected ? 'Connected to $pcIp' : 'Disconnected from PC')),
-                  FilledButton.icon(
-                    onPressed: connected ? disconnectFromPC : connectToPC,
-                    icon: Icon(connected ? Icons.logout : Icons.login),
-                    label: Text(connected ? 'Disconnect' : 'Connect'),
-                    style: FilledButton.styleFrom(backgroundColor: connected ? Colors.red : Colors.cyan),
-                  ),
+                  const Text('G-CODE FILE:', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  Text('${result?.lines ?? 0} Lines', style: const TextStyle(color: Colors.cyan, fontSize: 12)),
                 ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                fileName,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: openFile,
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('Load G-Code Program'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.cyan,
+                    side: const BorderSide(color: Colors.cyan),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                ),
               ),
             ],
           ),
-        ),
-
-        // Live DRO View
-        panel(
-          'Live DRO (Digital Readouts)',
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              droBox('X', droX, Colors.cyan),
-              droBox('Y', droY, Colors.green),
-              droBox('Z', droZ, Colors.orange),
-            ],
-          ),
-        ),
-
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          childAspectRatio: 1.55,
-          children: [
-            stat('G-code lines', '${result?.lines ?? 0}', Icons.description),
-            stat('Movements', '${result?.movements ?? 0}', Icons.timeline),
-            stat('Distance', '${(result?.distance ?? 0).toStringAsFixed(2)} mm', Icons.straighten),
-            stat('Loaded file', fileName.length > 15 ? '${fileName.substring(0, 12)}...' : fileName, Icons.folder_open),
-          ],
         ),
       ],
     );
   }
 
-  Widget droBox(String axis, double val, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0C1017),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Column(
-        children: [
-          Text(axis, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 5),
-          Text(val.toStringAsFixed(3), style: const TextStyle(fontSize: 22, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
-        ],
-      ),
+  Widget machDroRow(String axis, double val, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(axis, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.bold)),
+        Text(
+          val.toStringAsFixed(4),
+          style: TextStyle(color: color, fontSize: 32, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 
@@ -442,20 +488,6 @@ class _MainScreenState extends State<MainScreen> {
                     onPressed: openFile,
                     icon: const Icon(Icons.folder_open),
                     label: const Text('Open File'),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: () => sendCommand('CYCLE_START'),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Cycle Start'),
-                    style: FilledButton.styleFrom(backgroundColor: Colors.green),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: () => sendCommand('FEED_HOLD'),
-                    icon: const Icon(Icons.pause),
-                    label: const Text('Feed Hold'),
-                    style: FilledButton.styleFrom(backgroundColor: Colors.orange),
                   ),
                 ],
               ),
@@ -571,9 +603,7 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  jogButton('Y+', () => sendCommand('JOG:Y+')),
-                ],
+                children: [jogButton('Y+', () => sendCommand('JOG:Y+'))],
               ),
               const SizedBox(height: 10),
               Row(
@@ -587,9 +617,7 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  jogButton('Y-', () => sendCommand('JOG:Y-')),
-                ],
+                children: [jogButton('Y-', () => sendCommand('JOG:Y-'))],
               ),
               const SizedBox(height: 30),
               Row(
@@ -619,7 +647,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  // --- 6. Work Offsets (G54 - G59) ---
+  // --- 6. Work Offsets ---
   Widget offsetsPage() => const OffsetPage();
 
   // --- 7. Tool Table ---
@@ -696,6 +724,13 @@ class _MainScreenState extends State<MainScreen> {
                 showMessage('Settings saved!');
               },
               child: const Text('Save Settings'),
+            ),
+            const SizedBox(height: 15),
+            FilledButton.icon(
+              onPressed: connected ? disconnectFromPC : connectToPC,
+              icon: Icon(connected ? Icons.logout : Icons.login),
+              label: Text(connected ? 'Disconnect from PC' : 'Connect to PC'),
+              style: FilledButton.styleFrom(backgroundColor: connected ? Colors.red : Colors.cyan),
             ),
           ],
         )),
