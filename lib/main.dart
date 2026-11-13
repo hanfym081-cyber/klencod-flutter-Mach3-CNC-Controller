@@ -152,12 +152,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool optionalStop = false;
   bool blockDelete = false;
   bool cvMode = true;
-  int currentTool = 1;
+  
+  int currentTool = 1; // رقم العدة الحالية
   double jogStep = 1.0;
 
   Timer? simulatorTimer;
   int simulatorIndex = 0;
   int activeLineIndex = -1;
+  int selectedLineIndex = 0; // السطر المحدد بواسطة Set Next Line
+  
   final ScrollController gcodeScrollController = ScrollController();
   final TextEditingController mdiController = TextEditingController();
 
@@ -340,6 +343,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         result = parsed;
         simulatorIndex = 0;
         activeLineIndex = -1;
+        selectedLineIndex = 0;
       });
       if (connected) sendCommand('LOAD_FILE:${file.name}');
     } catch (_) {}
@@ -368,6 +372,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                     child: Text('Mill-> G15 G17 G21 G90 G54', style: TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.amberAccent)),
                   ),
                   const Spacer(),
+                  // مؤشر العدة الحالية في الشريط العلوي لسهولة المتابعة
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    margin: const EdgeInsets.only(right: 6),
+                    color: Colors.blueGrey.shade800,
+                    child: Text('Tool: #$currentTool', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
+                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     margin: const EdgeInsets.only(right: 6),
@@ -460,18 +471,22 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             itemCount: result!.rawLines.length,
                             itemBuilder: (context, index) {
                               bool isActive = index == activeLineIndex;
-                              return Container(
-                                height: 18,
-                                color: isActive ? Colors.blue.shade900 : Colors.transparent,
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  result!.rawLines[index],
-                                  style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 10,
-                                    color: isActive ? Colors.white : Colors.lightGreenAccent,
-                                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                              bool isSelected = index == selectedLineIndex;
+                              return InkWell(
+                                onTap: () => setState(() => selectedLineIndex = index), // تحديد السطر عند النقر عليه
+                                child: Container(
+                                  height: 18,
+                                  color: isActive ? Colors.blue.shade900 : (isSelected ? Colors.grey.shade800 : Colors.transparent),
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    result!.rawLines[index],
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 10,
+                                      color: isActive ? Colors.white : Colors.lightGreenAccent,
+                                      fontWeight: isActive || isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
                                   ),
                                 ),
                               );
@@ -497,14 +512,25 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(width: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Rewind', const Color(0xFF333B48), () => sendCommand('REWIND'), height: 26)),
                           const SizedBox(width: 2),
-                          Expanded(child: classicMachBtn('Set Next Line', const Color(0xFF333B48), () {}, height: 26)),
+                          // تفعيل زر Set Next Line لنقل مؤشر المحاكاة للسطر المحدد
+                          Expanded(
+                            child: classicMachBtn('Set Next Line', Colors.blueGrey.shade700, () {
+                              setState(() {
+                                simulatorIndex = selectedLineIndex;
+                                activeLineIndex = selectedLineIndex;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Start line set to: $selectedLineIndex')),
+                              );
+                            }, height: 26),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -594,6 +620,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   height: 125,
                   child: Row(
                     children: [
+                      // صندوق التغذية مع أزرار الموجب والسالب (+) و (-)
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -626,8 +653,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   Text('FRO: $feedOverride%', style: const TextStyle(fontSize: 10, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                                   Row(
                                     children: [
-                                      smallBtn('50%', () => setState(() => feedOverride = 50)),
-                                      smallBtn('100%', () => setState(() => feedOverride = 100)),
+                                      smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 5))),
+                                      const SizedBox(width: 2),
+                                      smallBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 5))),
                                     ],
                                   ),
                                 ],
@@ -640,6 +668,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ),
                       ),
                       const SizedBox(width: 3),
+                      // صندوق سرعة المغزل مع أزرار الموجب (+) والسالب (-) وعرض رقم العدة
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -651,22 +680,40 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Spindle Speed', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Spindle Speed', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
+                                  Text('Tool #$currentTool', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                ],
+                              ),
                               const Divider(height: 2, color: Colors.white24),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text('RPM: ${spindleRpm.toInt()}', style: const TextStyle(fontSize: 10, color: Colors.amberAccent, fontWeight: FontWeight.bold)),
-                                  classicMachBtn(
-                                    spindleOn ? 'ON' : 'OFF',
-                                    spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
-                                    () => sendCommand('SPINDLE_TOGGLE'),
-                                    height: 20,
+                                  Row(
+                                    children: [
+                                      smallBtn('-', () => setState(() => spindleRpm = math.max(1000, spindleRpm - 500))),
+                                      const SizedBox(width: 2),
+                                      smallBtn('+', () => setState(() => spindleRpm = math.min(24000, spindleRpm + 500))),
+                                    ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text('S: ${spindleRpm.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('S: ${spindleRpm.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white, fontWeight: FontWeight.bold)),
+                                  classicMachBtn(
+                                    spindleOn ? 'ON' : 'OFF',
+                                    spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
+                                    () => sendCommand('SPINDLE_TOGGLE'),
+                                    height: 18,
+                                  ),
+                                ],
+                              ),
                               const Text('Spindle CW F5', style: TextStyle(fontSize: 9, color: Colors.white60)),
                             ],
                           ),
@@ -821,9 +868,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(color: const Color(0xFF333B48), border: Border.all(color: Colors.white24)),
-        child: Text(label, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold)),
+        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
       ),
     );
   }
