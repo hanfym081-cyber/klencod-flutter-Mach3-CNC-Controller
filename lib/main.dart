@@ -38,11 +38,12 @@ class GPoint {
   final double x;
   final double y;
   final double z;
+  final double a;
   final bool rapid;
   final int lineIndex;
   final double feed;
   final double spindle;
-  const GPoint(this.x, this.y, this.z, this.rapid, this.lineIndex, this.feed, this.spindle);
+  const GPoint(this.x, this.y, this.z, this.a, this.rapid, this.lineIndex, this.feed, this.spindle);
 }
 
 class GCodeResult {
@@ -64,7 +65,7 @@ class GCodeParser {
   static GCodeResult parse(String source) {
     final points = <GPoint>[];
     final rawLines = source.split(RegExp(r'\r?\n'));
-    double x = 0, y = 0, z = 0;
+    double x = 0, y = 0, z = 0, a = 0;
     double currentFeed = 100.0;
     double currentSpindle = 12000.0;
     double scale = 1;
@@ -99,15 +100,16 @@ class GCodeParser {
       if (values.containsKey('F')) currentFeed = values['F']!;
       if (values.containsKey('S')) currentSpindle = values['S']!;
 
-      if (values.containsKey('X') || values.containsKey('Y') || values.containsKey('Z')) {
+      if (values.containsKey('X') || values.containsKey('Y') || values.containsKey('Z') || values.containsKey('A')) {
         final oldX = x, oldY = y, oldZ = z;
         if (values.containsKey('X')) x = absolute ? (values['X']! * scale) : x + (values['X']! * scale);
         if (values.containsKey('Y')) y = absolute ? (values['Y']! * scale) : y + (values['Y']! * scale);
         if (values.containsKey('Z')) z = absolute ? (values['Z']! * scale) : z + (values['Z']! * scale);
+        if (values.containsKey('A')) a = absolute ? values['A']! : a + values['A']!;
 
         distance += math.sqrt(math.pow(x - oldX, 2) + math.pow(y - oldY, 2) + math.pow(z - oldZ, 2));
         movements++;
-        points.add(GPoint(x, y, z, rapid, i, currentFeed, currentSpindle));
+        points.add(GPoint(x, y, z, a, rapid, i, currentFeed, currentSpindle));
       }
     }
     return GCodeResult(
@@ -141,6 +143,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   double droX = 0.0000;
   double droY = 0.0000;
   double droZ = 0.0000;
+  double droA = 0.0000; // إحداثيات المحور الرابع A
+  
   bool machineCoords = false;
   bool estop = true; 
   bool spindleOn = false;
@@ -244,6 +248,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = 0;
         droY = 0;
         droZ = 0;
+        droA = 0;
         currentFeedRate = 100.0;
         spindleRpm = 12000.0;
       });
@@ -252,17 +257,19 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = 0.0;
         droY = 0.0;
         droZ = 0.0;
+        droA = 0.0;
       });
     } else if (cmd == 'ZERO:X') setState(() => droX = 0.0);
     else if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
     else if (cmd == 'ZERO:Z') setState(() => droZ = 0.0);
+    else if (cmd == 'ZERO:4') setState(() => droA = 0.0);
     else if (cmd == 'JOG:X+') setState(() => droX += jogStep);
     else if (cmd == 'JOG:X-') setState(() => droX -= jogStep);
     else if (cmd == 'JOG:Y+') setState(() => droY += jogStep);
     else if (cmd == 'JOG:Y-') setState(() => droY -= jogStep);
     else if (cmd == 'JOG:Z+') setState(() => droZ += jogStep);
     else if (cmd == 'JOG:Z-') setState(() => droZ -= jogStep);
-    else if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; });
+    else if (cmd == 'GOTO_ZERO') setState(() { droX = 0; droY = 0; droZ = 0; droA = 0; });
     else if (cmd == 'SPINDLE_TOGGLE') setState(() => spindleOn = !spindleOn);
   }
 
@@ -287,6 +294,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         droX = pt.x;
         droY = pt.y;
         droZ = pt.z;
+        droA = pt.a;
         currentFeedRate = pt.feed * (feedOverride / 100.0);
         spindleRpm = pt.spindle * (spindleOverride / 100.0);
         activeLineIndex = pt.lineIndex;
@@ -318,6 +326,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           if (p.startsWith('X=')) droX = double.parse(p.substring(2));
           if (p.startsWith('Y=')) droY = double.parse(p.substring(2));
           if (p.startsWith('Z=')) droZ = double.parse(p.substring(2));
+          if (p.startsWith('A=')) droA = double.parse(p.substring(2));
           if (p.startsWith('ESTOP=')) estop = p.substring(6) == '1';
         }
         setState(() {});
@@ -577,6 +586,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             const SizedBox(height: 2),
                             droBox('Z', droZ, () => sendCommand('ZERO:Z')),
                             const SizedBox(height: 2),
+                            droBox('4', droA, () => sendCommand('ZERO:4')), // شاشة المحور الرابع A المطابقة للأصل
+                            const SizedBox(height: 2),
                             Row(
                               children: [
                                 Expanded(
@@ -607,12 +618,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                // ================= صندوق Feed Rate و Spindle Speed المطابق للأصل تماماً وتعمل بفعالية =================
+                // ================= صندوق Feed Rate و Spindle Speed بأزرار كبيرة وواضحة =================
                 SizedBox(
-                  height: 135,
+                  height: 145,
                   child: Row(
                     children: [
-                      // 1. صندوق Feed Rate الأصلي والفعال
+                      // 1. صندوق Feed Rate مع أزرار أكبر (+) و (-)
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -652,9 +663,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   const Text('Rapid FRO', style: TextStyle(fontSize: 8, color: Colors.white60)),
                                   Row(
                                     children: [
-                                      smallBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
-                                      const SizedBox(width: 2),
-                                      smallBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 10))),
+                                      bigBtn('-', () => setState(() => feedOverride = math.max(10, feedOverride - 10))),
+                                      const SizedBox(width: 4),
+                                      bigBtn('+', () => setState(() => feedOverride = math.min(200, feedOverride + 10))),
                                     ],
                                   ),
                                 ],
@@ -682,7 +693,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ),
                       ),
                       const SizedBox(width: 3),
-                      // 2. صندوق Spindle Speed الأصلي والفعال
+                      // 2. صندوق Spindle Speed مع أزرار أكبر (+) و (-)
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -721,9 +732,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                   const Text('RPM Control', style: TextStyle(fontSize: 8, color: Colors.white60)),
                                   Row(
                                     children: [
-                                      smallBtn('-', () => setState(() => spindleOverride = math.max(10, spindleOverride - 10))),
-                                      const SizedBox(width: 2),
-                                      smallBtn('+', () => setState(() => spindleOverride = math.min(200, spindleOverride + 10))),
+                                      bigBtn('-', () => setState(() => spindleOverride = math.max(10, spindleOverride - 10))),
+                                      const SizedBox(width: 4),
+                                      bigBtn('+', () => setState(() => spindleOverride = math.min(200, spindleOverride + 10))),
                                     ],
                                   ),
                                 ],
@@ -856,24 +867,24 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget droBox(String axis, double value, VoidCallback onZero) {
     return Container(
-      height: 34,
+      height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.black,
-        border: Border.all(color: machineCoords ? Colors.redAccent : Colors.grey.shade600, width: 1.5),
+        border: Border.all(color: machineCoords ? Colors.redAccent : Colors.grey.shade600, width: 1.2),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           InkWell(
             onTap: onZero,
-            child: Text('Zero $axis', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
+            child: Text('Zero $axis', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.amberAccent)),
           ),
           Text(
             value.toStringAsFixed(4),
             style: TextStyle(
               fontFamily: 'monospace',
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
               color: machineCoords ? Colors.redAccent : const Color(0xFF00FF41),
             ),
@@ -894,6 +905,22 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2), side: const BorderSide(color: Colors.white24)),
         ),
         child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
+      ),
+    );
+  }
+
+  // أزرار أكبر وأوضح لعمليات الـ FRO و Spindle (+ و -)
+  Widget bigBtn(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF434C5E),
+          border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
       ),
     );
   }
