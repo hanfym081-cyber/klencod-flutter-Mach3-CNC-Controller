@@ -140,20 +140,18 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   String pcIp = '192.168.1.100';
   int pcPort = 50002;
 
-  // إحداثيات المحاور
   double droX = 0.0000;
   double droY = 0.0000;
   double droZ = 0.0000;
   double droA = 0.0000;
 
-  // خصائص شاشة MDI الإضافية
   double scaleX = 1.0000;
   double scaleY = 1.0000;
   double scaleZ = 1.0000;
   bool showToGo = false;
   bool jogEnabled = true;
   double localRotationDeg = 0.0;
-  int workOffsetNum = 1; // 1 = G54, 2 = G55...
+  int workOffsetNum = 1;
   bool isTeaching = false;
   final List<String> taughtLines = [];
   double varX = 0.0, varY = 0.0, varZ = 0.0, varA = 0.0;
@@ -215,25 +213,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     await prefs.setInt('pc_port', pcPort);
   }
 
-  Future<void> connectToPC() async {
-    try {
-      pcSocket = await Socket.connect(pcIp, pcPort, timeout: const Duration(seconds: 4));
-      setState(() => connected = true);
-      pcSocket!.listen((data) {
-        parsePcData(utf8.decode(data));
-      }, onDone: () => disconnect(), onError: (_) => disconnect());
-    } catch (_) {
-      disconnect();
-    }
-  }
-
-  void disconnect() {
-    pcSocket?.destroy();
-    pcSocket = null;
-    setState(() => connected = false);
-  }
-
-  // تنفيذ أوامر MDI اليدوية وتحديث المحاور فعلياً
   void executeMdiGCode(String rawCmd) {
     final cmd = rawCmd.trim().toUpperCase();
     if (cmd.isEmpty) return;
@@ -242,10 +221,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       mdiHistory.insert(0, cmd);
       statusMessage = 'MDI Executed: $cmd';
     });
-
-    if (connected && pcSocket != null) {
-      pcSocket!.write('MDI:$cmd\n');
-    }
 
     if (estop) {
       setState(() => statusMessage = 'Error: E-Stop Active! Press RESET first.');
@@ -263,51 +238,28 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         final g = values['G']!;
         if (g == 90) absoluteMode = true;
         if (g == 91) absoluteMode = false;
-        if (g == 28) {
-          droX = 0;
-          droY = 0;
-          droZ = 0;
-          droA = 0;
-        }
-        if (g >= 54 && g <= 59) {
-          workOffsetNum = (g - 53).toInt();
-        }
+        if (g == 28) { droX = 0; droY = 0; droZ = 0; droA = 0; }
+        if (g >= 54 && g <= 59) workOffsetNum = (g - 53).toInt();
       }
-
       if (values.containsKey('M')) {
         final m = values['M']!;
         if (m == 3 || m == 4) spindleOn = true;
         if (m == 5) spindleOn = false;
       }
-
       if (values.containsKey('F')) currentFeedRate = values['F']!;
       if (values.containsKey('S')) spindleRpm = values['S']!;
       if (values.containsKey('T')) currentTool = values['T']!.toInt();
 
-      if (values.containsKey('X')) {
-        droX = absoluteMode ? values['X']! * scaleX : droX + (values['X']! * scaleX);
-      }
-      if (values.containsKey('Y')) {
-        droY = absoluteMode ? values['Y']! * scaleY : droY + (values['Y']! * scaleY);
-      }
-      if (values.containsKey('Z')) {
-        droZ = absoluteMode ? values['Z']! * scaleZ : droZ + (values['Z']! * scaleZ);
-      }
-      if (values.containsKey('A')) {
-        droA = absoluteMode ? values['A']! : droA + values['A']!;
-      }
+      if (values.containsKey('X')) droX = absoluteMode ? values['X']! * scaleX : droX + (values['X']! * scaleX);
+      if (values.containsKey('Y')) droY = absoluteMode ? values['Y']! * scaleY : droY + (values['Y']! * scaleY);
+      if (values.containsKey('Z')) droZ = absoluteMode ? values['Z']! * scaleZ : droZ + (values['Z']! * scaleZ);
+      if (values.containsKey('A')) droA = absoluteMode ? values['A']! : droA + values['A']!;
 
-      if (isTeaching) {
-        taughtLines.add(cmd);
-      }
+      if (isTeaching) taughtLines.add(cmd);
     });
   }
 
   void sendCommand(String cmd) {
-    if (connected && pcSocket != null) {
-      pcSocket!.write('$cmd\n');
-    }
-
     if (cmd == 'RESET') {
       setState(() {
         estop = !estop;
@@ -331,38 +283,25 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       setState(() {
         simulatorIndex = 0;
         activeLineIndex = -1;
-        droX = 0;
-        droY = 0;
-        droZ = 0;
-        droA = 0;
+        droX = 0; droY = 0; droZ = 0; droA = 0;
         currentFeedRate = 100.0;
         spindleRpm = 12000.0;
       });
     } else if (cmd == 'REF_ALL_HOME') {
       setState(() {
-        droX = 0.0;
-        droY = 0.0;
-        droZ = 0.0;
-        droA = 0.0;
+        droX = 0.0; droY = 0.0; droZ = 0.0; droA = 0.0;
         statusMessage = 'All Axes Referenced to Home';
       });
     } else if (cmd == 'ZERO_ALL') {
       setState(() {
-        droX = 0.0;
-        droY = 0.0;
-        droZ = 0.0;
-        droA = 0.0;
+        droX = 0.0; droY = 0.0; droZ = 0.0; droA = 0.0;
         statusMessage = 'All Work Coordinates Zeroed';
       });
-    } else if (cmd == 'ZERO:X') {
-      setState(() => droX = 0.0);
-    } else if (cmd == 'ZERO:Y') {
-      setState(() => droY = 0.0);
-    } else if (cmd == 'ZERO:Z') {
-      setState(() => droZ = 0.0);
-    } else if (cmd == 'ZERO:A') {
-      setState(() => droA = 0.0);
-    } else if (cmd.startsWith('JOG:')) {
+    } else if (cmd == 'ZERO:X') setState(() => droX = 0.0);
+    else if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
+    else if (cmd == 'ZERO:Z') setState(() => droZ = 0.0);
+    else if (cmd == 'ZERO:A') setState(() => droA = 0.0);
+    else if (cmd.startsWith('JOG:')) {
       if (!jogEnabled) {
         setState(() => statusMessage = 'Jog is OFF! Enable Jog ON/OFF first.');
         return;
@@ -403,24 +342,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       }
       final pt = result!.points[simulatorIndex];
       setState(() {
-        droX = pt.x;
-        droY = pt.y;
-        droZ = pt.z;
-        droA = pt.a;
+        droX = pt.x; droY = pt.y; droZ = pt.z; droA = pt.a;
         currentFeedRate = pt.feed * (feedOverride / 100.0);
         spindleRpm = pt.spindle * (spindleOverride / 100.0);
         activeLineIndex = pt.lineIndex;
         simulatorIndex++;
       });
-
-      if (gcodeScrollController.hasClients && activeLineIndex >= 0) {
-        double targetScroll = (activeLineIndex * 18.0) - 80.0;
-        if (targetScroll < 0) targetScroll = 0;
-        if (targetScroll > gcodeScrollController.position.maxScrollExtent) {
-          targetScroll = gcodeScrollController.position.maxScrollExtent;
-        }
-        gcodeScrollController.jumpTo(targetScroll);
-      }
     });
     setState(() {});
   }
@@ -428,22 +355,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   void stopSimulation() {
     simulatorTimer?.cancel();
     setState(() {});
-  }
-
-  void parsePcData(String data) {
-    try {
-      if (data.startsWith('DRO:')) {
-        final parts = data.substring(4).trim().split(';');
-        for (var p in parts) {
-          if (p.startsWith('X=')) droX = double.parse(p.substring(2));
-          if (p.startsWith('Y=')) droY = double.parse(p.substring(2));
-          if (p.startsWith('Z=')) droZ = double.parse(p.substring(2));
-          if (p.startsWith('A=')) droA = double.parse(p.substring(2));
-          if (p.startsWith('ESTOP=')) estop = p.substring(6) == '1';
-        }
-        setState(() {});
-      }
-    } catch (_) {}
   }
 
   Future<void> openFile() async {
@@ -469,7 +380,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         selectedLineIndex = 0;
         statusMessage = 'Loaded: ${file.name}';
       });
-      if (connected) sendCommand('LOAD_FILE:${file.name}');
     } catch (_) {}
   }
 
@@ -480,7 +390,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // شريط التبويبات العلوي
             Container(
               height: 30,
               color: const Color(0xFF2B303B),
@@ -501,16 +410,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     margin: const EdgeInsets.only(right: 6),
-                    color: isSimulating ? Colors.amber.shade800 : (connected ? Colors.green.shade800 : Colors.blueGrey.shade800),
+                    color: isSimulating ? Colors.amber.shade800 : Colors.blueGrey.shade800,
                     child: Text(
-                      isSimulating ? 'SIMULATING...' : (connected ? 'ONLINE' : 'OFFLINE'),
+                      isSimulating ? 'SIMULATING...' : 'OFFLINE',
                       style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ),
                 ],
               ),
             ),
-            // محتوى الشاشات
             Expanded(
               child: IndexedStack(
                 index: currentTab,
@@ -524,7 +432,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
-            // شريط الحالة السفلي
             Container(
               height: 20,
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -569,7 +476,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الأولى: Program Run Alt-1 ====================
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -634,7 +540,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(width: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
@@ -648,31 +554,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 activeLineIndex = selectedLineIndex;
                               });
                             }, height: 26),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: CheckboxListTile(
-                              title: const Text('Block Delete', style: TextStyle(fontSize: 9)),
-                              value: blockDelete,
-                              onChanged: (v) => setState(() => blockDelete = v ?? false),
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            ),
-                          ),
-                          Expanded(
-                            child: CheckboxListTile(
-                              title: const Text('M1 Optional Stop', style: TextStyle(fontSize: 9)),
-                              value: optionalStop,
-                              onChanged: (v) => setState(() => optionalStop = v ?? false),
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            ),
                           ),
                         ],
                       ),
@@ -736,10 +617,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                SizedBox(
-                  height: 124,
-                  child: buildFeedAndSpindleRow(),
-                ),
+                SizedBox(height: 124, child: buildFeedAndSpindleRow()),
               ],
             ),
           ),
@@ -748,10 +626,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             flex: 3,
             child: Column(
               children: [
-                Expanded(
-                  flex: 4,
-                  child: buildToolpathBox(),
-                ),
+                Expanded(flex: 4, child: buildToolpathBox()),
                 const SizedBox(height: 3),
                 Expanded(
                   flex: 5,
@@ -821,23 +696,21 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الثانية: MDI Alt-2 (مطابقة للصورة وبخصائص كاملة) ====================
+  // ==================== الشاشة الثانية المحدثة تماماً: MDI Alt-2 ====================
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Column(
         children: [
-          // الجزء العلوي (3 أعمدة مطابقة للصورة تماماً)
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // العمود الأيسر: REF ALL HOME + DROs + Scale + أزرار المحاور + Rotation & Tool/Offset
+                // العمود الأيسر: DROs والأزرار الخاصة بـ MDI
                 Expanded(
                   flex: 38,
                   child: Column(
                     children: [
-                      // بلوك الـ DROs مع زر REF ALL HOME الطولي
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -850,28 +723,19 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(
                             child: Column(
                               children: [
-                                mdiDroRow('X', droX, scaleX, () => sendCommand('ZERO:X'), () {
-                                  setState(() => scaleX = scaleX == 1.0 ? 0.5 : 1.0);
-                                }),
+                                mdiDroRow('X', droX, scaleX, () => sendCommand('ZERO:X'), () => setState(() => scaleX = scaleX == 1.0 ? 0.5 : 1.0)),
                                 const SizedBox(height: 2),
-                                mdiDroRow('Y', droY, scaleY, () => sendCommand('ZERO:Y'), () {
-                                  setState(() => scaleY = scaleY == 1.0 ? 0.5 : 1.0);
-                                }),
+                                mdiDroRow('Y', droY, scaleY, () => sendCommand('ZERO:Y'), () => setState(() => scaleY = scaleY == 1.0 ? 0.5 : 1.0)),
                                 const SizedBox(height: 2),
-                                mdiDroRow('Z', droZ, scaleZ, () => sendCommand('ZERO:Z'), () {
-                                  setState(() => scaleZ = scaleZ == 1.0 ? 0.5 : 1.0);
-                                }),
+                                mdiDroRow('Z', droZ, scaleZ, () => sendCommand('ZERO:Z'), () => setState(() => scaleZ = scaleZ == 1.0 ? 0.5 : 1.0)),
                                 const SizedBox(height: 2),
-                                // محور A + زر Radius Correct
                                 Row(
                                   children: [
                                     Expanded(flex: 7, child: droBox('A', droA, () => sendCommand('ZERO:A'), height: 25)),
                                     const SizedBox(width: 2),
                                     Expanded(
                                       flex: 3,
-                                      child: classicMachBtn('Radius\nCorrect', const Color(0xFF333B48), () {
-                                        setState(() => statusMessage = 'Tool Radius Compensation Toggled');
-                                      }, height: 25, fontSize: 6.5),
+                                      child: classicMachBtn('Radius\nCorrect', const Color(0xFF333B48), () => setState(() => statusMessage = 'Tool Radius Comp Toggled'), height: 25, fontSize: 6.5),
                                     ),
                                   ],
                                 ),
@@ -881,45 +745,20 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ],
                       ),
                       const SizedBox(height: 3),
-                      // صف الأزرار أسفل المحاور: De-Ref | Zero All | To Go | Mach Coords | Verify
                       Row(
                         children: [
-                          Expanded(child: classicMachBtn('De-Ref\nAll Axes', const Color(0xFF333B48), () => setState(() => statusMessage = 'All Axes De-Referenced'), height: 24, fontSize: 6.5)),
+                          Expanded(child: classicMachBtn('De-Ref\nAxes', const Color(0xFF333B48), () => setState(() => statusMessage = 'Axes De-Referenced'), height: 24, fontSize: 6.5)),
                           const SizedBox(width: 2),
                           Expanded(child: classicMachBtn('Zero\nAll', const Color(0xFF333B48), () => sendCommand('ZERO_ALL'), height: 24, fontSize: 7)),
                           const SizedBox(width: 2),
-                          Expanded(
-                            child: classicMachBtn(
-                              'To Go',
-                              showToGo ? Colors.amber.shade800 : const Color(0xFF333B48),
-                              () => setState(() {
-                                showToGo = !showToGo;
-                                statusMessage = showToGo ? 'Showing Distance-To-Go' : 'Showing Work Coordinates';
-                              }),
-                              height: 24,
-                              fontSize: 7.5,
-                            ),
-                          ),
+                          Expanded(child: classicMachBtn('To Go', showToGo ? Colors.amber.shade800 : const Color(0xFF333B48), () => setState(() => showToGo = !showToGo), height: 24, fontSize: 7.5)),
                           const SizedBox(width: 2),
-                          Expanded(
-                            child: classicMachBtn(
-                              'Machine\nCoord\'s',
-                              machineCoords ? Colors.red.shade900 : const Color(0xFF333B48),
-                              () => setState(() => machineCoords = !machineCoords),
-                              height: 24,
-                              fontSize: 6.5,
-                            ),
-                          ),
+                          Expanded(child: classicMachBtn('Machine\nCoords', machineCoords ? Colors.red.shade900 : const Color(0xFF333B48), () => setState(() => machineCoords = !machineCoords), height: 24, fontSize: 6.5)),
                           const SizedBox(width: 2),
-                          Expanded(
-                            child: classicMachBtn('Verify', const Color(0xFF333B48), () {
-                              setState(() => statusMessage = 'Position Verified: No Lost Steps');
-                            }, height: 24, fontSize: 7.5),
-                          ),
+                          Expanded(child: classicMachBtn('Verify', const Color(0xFF333B48), () => setState(() => statusMessage = 'Verified'), height: 24, fontSize: 7.5)),
                         ],
                       ),
                       const SizedBox(height: 3),
-                      // الجزء السفلي من العمود الأيسر: Local System Rotated + TOOL + Work Offset + Jog ON/OFF
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.all(3),
@@ -929,7 +768,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           ),
                           child: Row(
                             children: [
-                              // Local System Rotated
                               Expanded(
                                 flex: 4,
                                 child: Column(
@@ -956,20 +794,17 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              // TOOL & Work Offset & Jog ON/OFF
                               Expanded(
                                 flex: 6,
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    // TOOL
                                     Row(
                                       children: [
                                         const Expanded(child: Text('TOOL', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber))),
                                         mediumBtn('-', () => setState(() => currentTool = math.max(0, currentTool - 1))),
                                         Container(
-                                          width: 32,
-                                          height: 18,
+                                          width: 32, height: 18,
                                           margin: const EdgeInsets.symmetric(horizontal: 3),
                                           alignment: Alignment.center,
                                           color: Colors.black,
@@ -978,14 +813,12 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                         mediumBtn('+', () => setState(() => currentTool = math.min(99, currentTool + 1))),
                                       ],
                                     ),
-                                    // Work Offset #
                                     Row(
                                       children: [
                                         Expanded(child: Text('Offset # (G${53 + workOffsetNum})', style: const TextStyle(fontSize: 7.5, color: Colors.white70))),
                                         mediumBtn('-', () => setState(() => workOffsetNum = math.max(1, workOffsetNum - 1))),
                                         Container(
-                                          width: 32,
-                                          height: 18,
+                                          width: 32, height: 18,
                                           margin: const EdgeInsets.symmetric(horizontal: 3),
                                           alignment: Alignment.center,
                                           color: Colors.black,
@@ -994,21 +827,16 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                         mediumBtn('+', () => setState(() => workOffsetNum = math.min(6, workOffsetNum + 1))),
                                       ],
                                     ),
-                                    // Jog ON/OFF
                                     InkWell(
                                       onTap: () => setState(() => jogEnabled = !jogEnabled),
                                       child: Container(
-                                        height: 20,
-                                        width: double.infinity,
+                                        height: 20, width: double.infinity,
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: jogEnabled ? Colors.green.shade800 : Colors.grey.shade800,
                                           border: Border.all(color: jogEnabled ? Colors.greenAccent : Colors.white24),
                                         ),
-                                        child: Text(
-                                          jogEnabled ? 'Jog ON/OFF Ctrl-Alt-J [ON]' : 'Jog ON/OFF Ctrl-Alt-J [OFF]',
-                                          style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.white),
-                                        ),
+                                        child: Text(jogEnabled ? 'Jog ON/OFF [ON]' : 'Jog ON/OFF [OFF]', style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.white)),
                                       ),
                                     ),
                                   ],
@@ -1023,33 +851,30 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ),
                 const SizedBox(width: 4),
 
-                // العمود الأوسط: شريط SCALING + أزرار Teach/Variable + مربعي Feed Rate و Spindle Speed
+                // العمود الأوسط: زر Scaling وأزرار Teach وحالة Feed & Spindle
                 Expanded(
                   flex: 34,
                   child: Column(
                     children: [
-                      // الجزء العلوي: شريط عمودي + 6 أزرار (2x3)
                       Expanded(
                         child: Row(
                           children: [
-                            // شريط SCALING OFF G50 العمودي
                             Container(
                               width: 18,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: (scaleX != 1.0 || scaleY != 1.0 || scaleZ != 1.0) ? Colors.amber.shade900 : const Color(0xFF2B303B),
+                                color: (scaleX != 1.0 || scaleY != 1.0) ? Colors.amber.shade900 : const Color(0xFF2B303B),
                                 border: Border.all(color: Colors.grey.shade700),
                               ),
                               child: RotatedBox(
                                 quarterTurns: 3,
                                 child: Text(
-                                  (scaleX != 1.0 || scaleY != 1.0 || scaleZ != 1.0) ? 'SCALING ON' : 'SCALING OFF G50',
+                                  (scaleX != 1.0 || scaleY != 1.0) ? 'SCALING ON' : 'SCALING OFF G50',
                                   style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white70),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 3),
-                            // شبكة الأزرار (2 أعمدة × 3 صفوف)
                             Expanded(
                               child: Column(
                                 children: [
@@ -1073,10 +898,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                             () => setState(() {
                                               isTeaching = true;
                                               taughtLines.clear();
-                                              statusMessage = 'Teach Mode Started: Recording MDI & Jog moves';
+                                              statusMessage = 'Teach Started: Recording MDI & Jog moves';
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8.5,
+                                            height: double.infinity, fontSize: 8.5,
                                           ),
                                         ),
                                         const SizedBox(width: 3),
@@ -1087,17 +911,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                             () => setState(() {
                                               isTeaching = false;
                                               if (taughtLines.isNotEmpty) {
-                                                final content = taughtLines.join('\n');
-                                                gcode = content;
-                                                result = GCodeParser.parse(content);
+                                                gcode = taughtLines.join('\n');
+                                                result = GCodeParser.parse(gcode);
                                                 fileName = 'MDI_Taught.nc';
-                                                statusMessage = 'Teach Stopped: ${taughtLines.length} lines loaded to Program Run';
-                                              } else {
-                                                statusMessage = 'Teach Stopped (No moves recorded)';
+                                                statusMessage = 'Teach Stopped: ${taughtLines.length} lines loaded';
                                               }
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8.5,
+                                            height: double.infinity, fontSize: 8.5,
                                           ),
                                         ),
                                       ],
@@ -1112,14 +932,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                             'Set Variable\nPosition',
                                             Colors.blueGrey.shade700,
                                             () => setState(() {
-                                              varX = droX;
-                                              varY = droY;
-                                              varZ = droZ;
-                                              varA = droA;
-                                              statusMessage = 'Variable Pos Saved: X${varX.toStringAsFixed(2)} Y${varY.toStringAsFixed(2)} Z${varZ.toStringAsFixed(2)}';
+                                              varX = droX; varY = droY; varZ = droZ; varA = droA;
+                                              statusMessage = 'Variable Pos Saved';
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8,
+                                            height: double.infinity, fontSize: 8,
                                           ),
                                         ),
                                         const SizedBox(width: 3),
@@ -1127,21 +943,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                           child: classicMachBtn(
                                             'Goto Variable\nPosition',
                                             Colors.blueGrey.shade700,
-                                            () {
-                                              if (estop) {
-                                                setState(() => statusMessage = 'Error: E-Stop Active!');
-                                                return;
-                                              }
-                                              setState(() {
-                                                droX = varX;
-                                                droY = varY;
-                                                droZ = varZ;
-                                                droA = varA;
-                                                statusMessage = 'Moved to Saved Variable Position';
-                                              });
-                                            },
-                                            height: double.infinity,
-                                            fontSize: 8,
+                                            () => setState(() {
+                                              droX = varX; droY = varY; droZ = varZ; droA = varA;
+                                              statusMessage = 'Moved to Saved Variable Position';
+                                            }),
+                                            height: double.infinity, fontSize: 8,
                                           ),
                                         ),
                                       ],
@@ -1154,17 +960,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      // مربعا Feed Rate و Spindle Speed
-                      SizedBox(
-                        height: 112,
-                        child: buildFeedAndSpindleRow(),
-                      ),
+                      SizedBox(height: 112, child: buildFeedAndSpindleRow()),
                     ],
                   ),
                 ),
                 const SizedBox(width: 4),
 
-                // العمود الأيمن: شاشة Toolpath السوداء
+                // العمود الأيمن: شاشة Toolpath
                 Expanded(
                   flex: 28,
                   child: buildToolpathBox(),
@@ -1174,7 +976,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
           const SizedBox(height: 3),
 
-          // شريط Input العريض لكتابة أوامر MDI
+          // شريط إدخال الأوامر اليدوية (MDI Input)
           Container(
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -1219,12 +1021,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
           const SizedBox(height: 3),
 
-          // الشريط السفلي في شاشة MDI: زر Reset الأحمر + G-Codes / M-Codes + History / Clear
+          // الشريط السفلي (زر Reset والأزرار المساعدة)
           SizedBox(
             height: 34,
             child: Row(
               children: [
-                // زر Reset الأحمر الكبير
                 GestureDetector(
                   onTap: () => sendCommand('RESET'),
                   child: Container(
@@ -1238,12 +1039,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // أزرار G-Codes و M-Codes
                 classicMachBtn('G-Codes', const Color(0xFF333B48), () => showCodesDialog(true), height: 30, width: 65, fontSize: 8.5),
                 const SizedBox(width: 3),
                 classicMachBtn('M-Codes', const Color(0xFF333B48), () => showCodesDialog(false), height: 30, width: 65, fontSize: 8.5),
                 const SizedBox(width: 8),
-                // عرض آخر أمر منفذ
                 Expanded(
                   child: Container(
                     height: 30,
@@ -1258,7 +1057,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // أزرار History و Clear
                 classicMachBtn('History', Colors.blueGrey.shade700, showHistoryDialog, height: 30, width: 60, fontSize: 8.5),
                 const SizedBox(width: 3),
                 classicMachBtn('Clear', const Color(0xFF333B48), () => setState(() => mdiHistory.clear()), height: 30, width: 50, fontSize: 8.5),
@@ -1270,17 +1068,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // صف DRO مع خانة Scale الخاصة بشاشة MDI
   Widget mdiDroRow(String axis, double value, double scaleVal, VoidCallback onZero, VoidCallback onScaleToggle) {
     double displayVal = showToGo ? 0.0 : value;
     return SizedBox(
       height: 25,
       child: Row(
         children: [
-          Expanded(
-            flex: 7,
-            child: droBox(axis, displayVal, onZero, height: 25),
-          ),
+          Expanded(flex: 7, child: droBox(axis, displayVal, onZero, height: 25)),
           const SizedBox(width: 2),
           Expanded(
             flex: 3,
@@ -1294,10 +1088,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   color: Colors.black,
                   border: Border.all(color: scaleVal != 1.0 ? Colors.amber : Colors.grey.shade700),
                 ),
-                child: Text(
-                  scaleVal.toStringAsFixed(3),
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: scaleVal != 1.0 ? Colors.amber : Colors.white70),
-                ),
+                child: Text(scaleVal.toStringAsFixed(3), style: TextStyle(fontFamily: 'monospace', fontSize: 9, color: scaleVal != 1.0 ? Colors.amber : Colors.white70)),
               ),
             ),
           ),
@@ -1306,17 +1097,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // مربعا Feed Rate و Spindle Speed المشتركان بين الشاشتين
   Widget buildFeedAndSpindleRow() {
     return Row(
       children: [
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF232731),
-              border: Border.all(color: Colors.grey.shade700),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFF232731), border: Border.all(color: Colors.grey.shade700)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1371,10 +1158,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF232731),
-              border: Border.all(color: Colors.grey.shade700),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFF232731), border: Border.all(color: Colors.grey.shade700)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1394,9 +1178,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       spindleOn ? 'ON' : 'OFF',
                       spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
                       () => sendCommand('SPINDLE_TOGGLE'),
-                      height: 15,
-                      width: 34,
-                      fontSize: 7,
+                      height: 15, width: 34, fontSize: 7,
                     ),
                   ],
                 ),
@@ -1435,21 +1217,14 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget buildToolpathBox() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border.all(color: Colors.grey.shade700, width: 1.5),
-      ),
+      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.grey.shade700, width: 1.5)),
       child: Stack(
         children: [
           result == null
               ? const Center(child: Text('Toolpath Window', style: TextStyle(color: Colors.white24, fontSize: 10)))
-              : CustomPaint(
-                  painter: Mach3ToolpathPainter(result!.points, simulatorIndex),
-                  child: const SizedBox.expand(),
-                ),
+              : CustomPaint(painter: Mach3ToolpathPainter(result!.points, simulatorIndex), child: const SizedBox.expand()),
           Positioned(
-            top: 2,
-            right: 4,
+            top: 2, right: 4,
             child: Text('Tool:#$currentTool', style: const TextStyle(fontSize: 8, color: Colors.amber, fontFamily: 'monospace')),
           ),
         ],
@@ -1464,8 +1239,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         backgroundColor: const Color(0xFF232731),
         title: const Text('MDI Command History', style: TextStyle(fontSize: 13, color: Colors.cyanAccent)),
         content: SizedBox(
-          width: 320,
-          height: 180,
+          width: 320, height: 180,
           child: mdiHistory.isEmpty
               ? const Center(child: Text('No commands executed yet.'))
               : ListView.builder(
@@ -1480,52 +1254,23 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
 
   void showCodesDialog(bool isGCode) {
-    final items = isGCode
-        ? [
-            'G00 - Rapid Positioning',
-            'G01 - Linear Interpolation',
-            'G02 / G03 - Circular Interpolation (CW/CCW)',
-            'G20 / G21 - Inch / Millimeter Units',
-            'G28 - Return to Home Position',
-            'G54..G59 - Work Coordinate Offsets',
-            'G90 / G91 - Absolute / Incremental Mode',
-          ]
-        : [
-            'M00 - Program Stop',
-            'M01 - Optional Program Stop',
-            'M03 / M04 - Spindle ON (CW / CCW)',
-            'M05 - Spindle Stop',
-            'M06 - Tool Change',
-            'M08 / M09 - Coolant ON / OFF',
-            'M30 - Program End & Rewind',
-          ];
-
+    final items = isGCode ? ['G00 - Rapid', 'G01 - Linear', 'G02/G03 - Arc', 'G20/G21 - Units', 'G28 - Home', 'G54..G59 - Offsets', 'G90/G91 - Mode'] : ['M00 - Stop', 'M03/M04 - Spindle ON', 'M05 - Spindle OFF', 'M06 - Tool Change', 'M30 - End'];
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF232731),
         title: Text(isGCode ? 'Standard G-Codes' : 'Standard M-Codes', style: const TextStyle(fontSize: 13, color: Colors.amber)),
         content: SizedBox(
-          width: 340,
-          height: 200,
-          child: ListView(
-            children: items.map((e) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)),
-            )).toList(),
-          ),
+          width: 340, height: 200,
+          child: ListView(children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList()),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
@@ -1534,10 +1279,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     return Container(
       height: height,
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border.all(color: machineCoords ? Colors.redAccent : Colors.grey.shade600, width: 1.2),
-      ),
+      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: machineCoords ? Colors.redAccent : Colors.grey.shade600, width: 1.2)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1547,12 +1289,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
           Text(
             '${value >= 0 ? "+" : ""}${value.toStringAsFixed(4)}',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: showToGo ? Colors.amber : (machineCoords ? Colors.redAccent : const Color(0xFF00FF41)),
-            ),
+            style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold, color: showToGo ? Colors.amber : (machineCoords ? Colors.redAccent : const Color(0xFF00FF41))),
           ),
         ],
       ),
@@ -1580,11 +1317,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        decoration: BoxDecoration(
-          color: const Color(0xFF434C5E),
-          border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)),
-          borderRadius: BorderRadius.circular(2),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFF434C5E), border: Border.all(color: Colors.cyanAccent.withOpacity(0.5)), borderRadius: BorderRadius.circular(2)),
         child: Text(label, style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.white)),
       ),
     );
@@ -1603,8 +1336,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget jogKey(String label, VoidCallback onTap, [Color color = Colors.cyanAccent]) {
     return SizedBox(
-      width: 32,
-      height: 20,
+      width: 32, height: 20,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
