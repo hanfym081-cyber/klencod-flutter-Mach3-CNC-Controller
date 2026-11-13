@@ -140,13 +140,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   String pcIp = '192.168.1.100';
   int pcPort = 50002;
 
-  // إحداثيات المحاور (X, Y, Z, A)
   double droX = 0.0000;
   double droY = 0.0000;
   double droZ = 0.0000;
   double droA = 0.0000;
 
-  // خصائص MDI و ToolPath
   double scaleX = 1.0000;
   double scaleY = 1.0000;
   double scaleZ = 1.0000;
@@ -160,7 +158,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   bool absoluteMode = true;
   bool singleBlock = false;
   bool reverseRun = false;
-  int toolpathDisplayMode = 0; // 0: Full, 1: Top XY, 2: Side XZ
+  int toolpathDisplayMode = 0;
   String statusMessage = 'No alarms or limits active';
 
   bool machineCoords = false;
@@ -227,10 +225,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       statusMessage = 'MDI Executed: $cmd';
     });
 
-    if (connected && pcSocket != null) {
-      pcSocket!.write('MDI:$cmd\n');
-    }
-
     if (estop) {
       setState(() => statusMessage = 'Error: E-Stop Active! Press RESET first.');
       return;
@@ -247,12 +241,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         final g = values['G']!;
         if (g == 90) absoluteMode = true;
         if (g == 91) absoluteMode = false;
-        if (g == 28) {
-          droX = 0;
-          droY = 0;
-          droZ = 0;
-          droA = 0;
-        }
+        if (g == 28) { droX = 0; droY = 0; droZ = 0; droA = 0; }
         if (g >= 54 && g <= 59) workOffsetNum = (g - 53).toInt();
       }
       if (values.containsKey('M')) {
@@ -274,10 +263,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
   }
 
   void sendCommand(String cmd) {
-    if (connected && pcSocket != null) {
-      pcSocket!.write('$cmd\n');
-    }
-
     if (cmd == 'RESET') {
       setState(() {
         estop = !estop;
@@ -301,39 +286,26 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       setState(() {
         simulatorIndex = 0;
         activeLineIndex = -1;
-        droX = 0;
-        droY = 0;
-        droZ = 0;
-        droA = 0;
+        droX = 0; droY = 0; droZ = 0; droA = 0;
         currentFeedRate = 100.0;
         spindleRpm = 12000.0;
         statusMessage = 'Program Rewound';
       });
     } else if (cmd == 'REF_ALL_HOME') {
       setState(() {
-        droX = 0.0;
-        droY = 0.0;
-        droZ = 0.0;
-        droA = 0.0;
+        droX = 0.0; droY = 0.0; droZ = 0.0; droA = 0.0;
         statusMessage = 'All Axes Referenced to Home';
       });
     } else if (cmd == 'ZERO_ALL') {
       setState(() {
-        droX = 0.0;
-        droY = 0.0;
-        droZ = 0.0;
-        droA = 0.0;
+        droX = 0.0; droY = 0.0; droZ = 0.0; droA = 0.0;
         statusMessage = 'All Work Coordinates Zeroed';
       });
-    } else if (cmd == 'ZERO:X') {
-      setState(() => droX = 0.0);
-    } else if (cmd == 'ZERO:Y') {
-      setState(() => droY = 0.0);
-    } else if (cmd == 'ZERO:Z') {
-      setState(() => droZ = 0.0);
-    } else if (cmd == 'ZERO:A') {
-      setState(() => droA = 0.0);
-    } else if (cmd.startsWith('JOG:')) {
+    } else if (cmd == 'ZERO:X') setState(() => droX = 0.0);
+    else if (cmd == 'ZERO:Y') setState(() => droY = 0.0);
+    else if (cmd == 'ZERO:Z') setState(() => droZ = 0.0);
+    else if (cmd == 'ZERO:A') setState(() => droA = 0.0);
+    else if (cmd.startsWith('JOG:')) {
       if (!jogEnabled) {
         setState(() => statusMessage = 'Jog is OFF! Enable Jog ON/OFF first.');
         return;
@@ -380,10 +352,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       final idx = reverseRun ? math.max(0, simulatorIndex - 1) : simulatorIndex;
       final pt = result!.points[idx];
       setState(() {
-        droX = pt.x;
-        droY = pt.y;
-        droZ = pt.z;
-        droA = pt.a;
+        droX = pt.x; droY = pt.y; droZ = pt.z; droA = pt.a;
         currentFeedRate = pt.feed * (feedOverride / 100.0);
         spindleRpm = pt.spindle * (spindleOverride / 100.0);
         activeLineIndex = pt.lineIndex;
@@ -436,23 +405,20 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         simulatorIndex = 0;
         activeLineIndex = -1;
         selectedLineIndex = 0;
-        statusMessage = 'Loaded: ${file.name}';
+        statusMessage = 'Loaded: ${file.name} (${parsed.points.length} points)';
       });
-    } catch (_) {}
+    } catch (e) {
+      setState(() => statusMessage = 'Error loading file: $e');
+    }
   }
 
-  // حساب حدود البرنامج تلقائياً لشاشة Tool Path
   Map<String, String> getProgramLimits() {
     if (result == null || result!.points.isEmpty) {
       return {
-        'xMin': '+0.0000',
-        'xMax': '+0.0000',
-        'yMin': '+0.0000',
-        'yMax': '+0.0000',
-        'zMin': '+0.0000',
-        'zMax': '+0.0000',
-        'aMin': '+0.0000',
-        'aMax': '+0.0000',
+        'xMin': '+0.0000', 'xMax': '+0.0000',
+        'yMin': '+0.0000', 'yMax': '+0.0000',
+        'zMin': '+0.0000', 'zMax': '+0.0000',
+        'aMin': '+0.0000', 'aMax': '+0.0000',
         'estTime': '0:00:00:00',
       };
     }
@@ -475,14 +441,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     String fmt(double v) => '${v >= 0 ? "+" : ""}${v.toStringAsFixed(4)}';
 
     return {
-      'xMin': fmt(minX),
-      'xMax': fmt(maxX),
-      'yMin': fmt(minY),
-      'yMax': fmt(maxY),
-      'zMin': fmt(minZ),
-      'zMax': fmt(maxZ),
-      'aMin': fmt(minA),
-      'aMax': fmt(maxA),
+      'xMin': fmt(minX), 'xMax': fmt(maxX),
+      'yMin': fmt(minY), 'yMax': fmt(maxY),
+      'zMin': fmt(minZ), 'zMax': fmt(maxZ),
+      'aMin': fmt(minA), 'aMax': fmt(maxA),
       'estTime': est,
     };
   }
@@ -609,7 +571,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                           Expanded(child: classicMachBtn('Stop\n<Alt-S>', Colors.red.shade900, () => sendCommand('STOP'), height: 34)),
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(width: 2),
                       Row(
                         children: [
                           Expanded(child: classicMachBtn('Load G-Code', const Color(0xFF333B48), openFile, height: 26)),
@@ -679,7 +641,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             const SizedBox(height: 2),
                             droBox('Z', droZ, () => sendCommand('ZERO:Z')),
                             const SizedBox(height: 2),
-                            droBox('A', droA, () => sendCommand('ZERO:A')), // المحور الرابع A
+                            droBox('A', droA, () => sendCommand('ZERO:A')),
                             const SizedBox(height: 2),
                             Row(
                               children: [
@@ -790,7 +752,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // ==================== الشاشة الثانية الكاملة: MDI Alt-2 ====================
+  // ==================== الشاشة الثانية: MDI Alt-2 ====================
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -800,7 +762,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // العمود الأيسر: DROs والأزرار الخاصة بـ MDI
                 Expanded(
                   flex: 38,
                   child: Column(
@@ -898,8 +859,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                         const Expanded(child: Text('TOOL', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber))),
                                         mediumBtn('-', () => setState(() => currentTool = math.max(0, currentTool - 1))),
                                         Container(
-                                          width: 32,
-                                          height: 18,
+                                          width: 32, height: 18,
                                           margin: const EdgeInsets.symmetric(horizontal: 3),
                                           alignment: Alignment.center,
                                           color: Colors.black,
@@ -913,8 +873,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                         Expanded(child: Text('Offset # (G${53 + workOffsetNum})', style: const TextStyle(fontSize: 7.5, color: Colors.white70))),
                                         mediumBtn('-', () => setState(() => workOffsetNum = math.max(1, workOffsetNum - 1))),
                                         Container(
-                                          width: 32,
-                                          height: 18,
+                                          width: 32, height: 18,
                                           margin: const EdgeInsets.symmetric(horizontal: 3),
                                           alignment: Alignment.center,
                                           color: Colors.black,
@@ -926,8 +885,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                     InkWell(
                                       onTap: () => setState(() => jogEnabled = !jogEnabled),
                                       child: Container(
-                                        height: 20,
-                                        width: double.infinity,
+                                        height: 20, width: double.infinity,
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: jogEnabled ? Colors.green.shade800 : Colors.grey.shade800,
@@ -948,7 +906,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ),
                 const SizedBox(width: 4),
 
-                // العمود الأوسط: Scaling + Teach + Feed & Spindle
                 Expanded(
                   flex: 34,
                   child: Column(
@@ -997,8 +954,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                               taughtLines.clear();
                                               statusMessage = 'Teach Started: Recording MDI & Jog moves';
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8.5,
+                                            height: double.infinity, fontSize: 8.5,
                                           ),
                                         ),
                                         const SizedBox(width: 3),
@@ -1015,8 +971,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                                 statusMessage = 'Teach Stopped: ${taughtLines.length} lines loaded';
                                               }
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8.5,
+                                            height: double.infinity, fontSize: 8.5,
                                           ),
                                         ),
                                       ],
@@ -1031,14 +986,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                             'Set Variable\nPosition',
                                             Colors.blueGrey.shade700,
                                             () => setState(() {
-                                              varX = droX;
-                                              varY = droY;
-                                              varZ = droZ;
-                                              varA = droA;
+                                              varX = droX; varY = droY; varZ = droZ; varA = droA;
                                               statusMessage = 'Variable Pos Saved';
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8,
+                                            height: double.infinity, fontSize: 8,
                                           ),
                                         ),
                                         const SizedBox(width: 3),
@@ -1047,14 +998,10 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                             'Goto Variable\nPosition',
                                             Colors.blueGrey.shade700,
                                             () => setState(() {
-                                              droX = varX;
-                                              droY = varY;
-                                              droZ = varZ;
-                                              droA = varA;
+                                              droX = varX; droY = varY; droZ = varZ; droA = varA;
                                               statusMessage = 'Moved to Saved Variable Position';
                                             }),
-                                            height: double.infinity,
-                                            fontSize: 8,
+                                            height: double.infinity, fontSize: 8,
                                           ),
                                         ),
                                       ],
@@ -1073,7 +1020,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ),
                 const SizedBox(width: 4),
 
-                // العمود الأيمن: Toolpath
                 Expanded(
                   flex: 28,
                   child: buildToolpathBox(),
@@ -1083,7 +1029,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
           const SizedBox(height: 3),
 
-          // شريط Input العريض
           Container(
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -1127,15 +1072,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(height: 3),
-
-          // الشريط السفلي في MDI
           buildBottomResetAndCodesBar(),
         ],
       ),
     );
   }
 
-  // ==================== الشاشة الثالثة الكاملة: ToolPath Alt-4 ====================
+  // ==================== الشاشة الثالثة: ToolPath Alt-4 ====================
   Widget buildToolPathTab() {
     final limits = getProgramLimits();
     final modeNames = ['3D / Iso View', 'Top View (XY)', 'Side View (XZ)'];
@@ -1144,7 +1087,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // القسم الأيسر: G-Code Viewer + Simulate + أزرار التحكم + شريط Reset السفلي
           Expanded(
             flex: 36,
             child: Column(
@@ -1154,7 +1096,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   child: buildGCodeListView(),
                 ),
                 const SizedBox(height: 3),
-                // صندوق Simulate Program Run & Estimated Program Run Time
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
@@ -1203,7 +1144,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                // أزرار التشغيل الكلاسيكية (Cycle Start, Rewind, Single BLK, Feed Hold, Stop, Reverse Run)
                 Expanded(
                   flex: 48,
                   child: Container(
@@ -1249,7 +1189,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                // زر Reset الأحمر + G-Codes / M-Codes / History / Clear مطابق للصورة
                 SizedBox(
                   height: 32,
                   child: Row(
@@ -1282,7 +1221,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
           ),
           const SizedBox(width: 4),
 
-          // القسم الأيمن: DROs للمحاور الأربعة (X, Y, Z, A) + Program Limits + شاشة التول باث الكبيرة
           Expanded(
             flex: 64,
             child: Column(
@@ -1291,7 +1229,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   height: 112,
                   child: Row(
                     children: [
-                      // المحاور الأربعة (X, Y, Z, A)
                       Expanded(
                         flex: 5,
                         child: Column(
@@ -1302,12 +1239,11 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                             const SizedBox(height: 2),
                             droBox('Z', droZ, () => sendCommand('ZERO:Z'), height: 26),
                             const SizedBox(height: 2),
-                            droBox('A', droA, () => sendCommand('ZERO:A'), height: 26), // المحور الرابع A
+                            droBox('A', droA, () => sendCommand('ZERO:A'), height: 26),
                           ],
                         ),
                       ),
                       const SizedBox(width: 4),
-                      // لوحة Program Limits
                       Expanded(
                         flex: 5,
                         child: Container(
@@ -1327,7 +1263,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                     limitRangeRow('X Range', limits['xMin']!, limits['xMax']!),
                                     limitRangeRow('Y Range', limits['yMin']!, limits['yMax']!),
                                     limitRangeRow('Z Range', limits['zMin']!, limits['zMax']!),
-                                    limitRangeRow('A Range', limits['aMin']!, limits['aMax']!), // المحور الرابع A Range
+                                    limitRangeRow('A Range', limits['aMin']!, limits['aMax']!),
                                     Container(
                                       height: 15,
                                       alignment: Alignment.center,
@@ -1341,7 +1277,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              // أزرار Display Mode و Regen. Toolpath الجانبية
                               SizedBox(
                                 width: 52,
                                 child: Column(
@@ -1383,8 +1318,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-
-                // شاشة التول باث الكبيرة
                 Expanded(
                   child: buildToolpathBox(),
                 ),
@@ -1404,16 +1337,14 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         Row(
           children: [
             Container(
-              width: 46,
-              height: 15,
+              width: 46, height: 15,
               alignment: Alignment.center,
               color: Colors.black,
               child: Text(minVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7, color: Colors.greenAccent)),
             ),
             const SizedBox(width: 2),
             Container(
-              width: 46,
-              height: 15,
+              width: 46, height: 15,
               alignment: Alignment.center,
               color: Colors.black,
               child: Text(maxVal, style: const TextStyle(fontFamily: 'monospace', fontSize: 7, color: Colors.greenAccent)),
@@ -1616,9 +1547,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       spindleOn ? 'ON' : 'OFF',
                       spindleOn ? Colors.amber.shade800 : const Color(0xFF333B48),
                       () => sendCommand('SPINDLE_TOGGLE'),
-                      height: 15,
-                      width: 34,
-                      fontSize: 7,
+                      height: 15, width: 34, fontSize: 7,
                     ),
                   ],
                 ),
@@ -1664,8 +1593,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
               ? const Center(child: Text('Toolpath Window', style: TextStyle(color: Colors.white24, fontSize: 10)))
               : CustomPaint(painter: Mach3ToolpathPainter(result!.points, simulatorIndex, displayMode: toolpathDisplayMode), child: const SizedBox.expand()),
           Positioned(
-            top: 3,
-            left: 5,
+            top: 3, left: 5,
             child: Text('Tool:$currentTool', style: const TextStyle(fontSize: 9, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
           ),
         ],
@@ -1680,8 +1608,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         backgroundColor: const Color(0xFF232731),
         title: const Text('MDI Command History', style: TextStyle(fontSize: 13, color: Colors.cyanAccent)),
         content: SizedBox(
-          width: 320,
-          height: 180,
+          width: 320, height: 180,
           child: mdiHistory.isEmpty
               ? const Center(child: Text('No commands executed yet.'))
               : ListView.builder(
@@ -1711,11 +1638,8 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
         backgroundColor: const Color(0xFF232731),
         title: Text(isGCode ? 'Standard G-Codes' : 'Standard M-Codes', style: const TextStyle(fontSize: 13, color: Colors.amber)),
         content: SizedBox(
-          width: 340,
-          height: 200,
-          child: ListView(
-            children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList(),
-          ),
+          width: 340, height: 200,
+          child: ListView(children: items.map((e) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(e, style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Colors.white)))).toList()),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
@@ -1783,8 +1707,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
 
   Widget jogKey(String label, VoidCallback onTap, [Color color = Colors.cyanAccent]) {
     return SizedBox(
-      width: 32,
-      height: 20,
+      width: 32, height: 20,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
