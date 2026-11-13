@@ -412,9 +412,9 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                 ],
               ),
             ),
-            // الشريط السفلي الموحد والخاص بإدخال الـ MDI والملاحظات
+            // شريط الإدخال المخصص تماماً لصورة MDI الأصلية في الأسفل
             Container(
-              height: 48,
+              height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               color: const Color(0xFF1E222B),
               child: Row(
@@ -427,15 +427,15 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
                       });
                       mdiController.clear();
                     }
-                  }, height: 34),
+                  }, height: 32),
                   const SizedBox(width: 6),
                   Expanded(
                     child: TextField(
                       controller: mdiController,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black),
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black, fontWeight: FontWeight.bold),
                       decoration: const InputDecoration(
                         filled: true,
-                        fillColor: Color(0xFFD4E8B0), // لون خلفية شريط الإدخال الكلاسيكي في Mach3
+                        fillColor: Color(0xFFE3F4C7), // لون خانة الإدخال الأخضر الفاتح الكلاسيكي
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         border: OutlineInputBorder(),
@@ -497,7 +497,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- الشاشة الأولى (Program Run) كما طلبت تماماً دون أي تعديل ---
+  // --- الشاشة الأولى (Program Run) كما طلبت تماماً دون أي مساس ---
   Widget buildProgramRunTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
@@ -896,13 +896,13 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية (Alt-2 MDI) ---
+  // --- شاشة MDI (Alt-2) المطابقة تماماً للصورة الثانية مع خانات Scale وأزرار التحكم الجانبية ---
   Widget buildMdiTab() {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // العمود الأيمن: خانات الـ DRO مع أزرار (Scale / Radius Correct) الموجودة في صورة MDI
+          // العمود الأيمن: خانات الـ DRO مع أزرار (Scale / Radius Correct)
           Expanded(
             flex: 4,
             child: Column(
@@ -1006,7 +1006,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الأوسط: أزرار Stop, Load/Edit, Start Teach, Stop Teach والألواح والـ Feed/Spindle
+          // العمود الأوسط: أزرار Stop, Load/Edit, Start Teach, Stop Teach
           Expanded(
             flex: 4,
             child: Column(
@@ -1121,7 +1121,7 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // العمود الأيسر: شاشة Toolpath السوداء الكلاسيكية (Tool0 والشاشة السوداء الفارغة أو المرسومة)
+          // العمود الأيسر: شاشة Toolpath السوداء الكلاسيكية (Tool0)
           Expanded(
             flex: 4,
             child: Container(
@@ -1157,7 +1157,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
       padding: const EdgeInsets.all(4.0),
       child: Row(
         children: [
-          // القسم الأيمن في شاشة Toolpath: جدول حدود البرنامج Program Limits وأزرار Display Mode و Regen Toolpath
           Expanded(
             flex: 4,
             child: Container(
@@ -1207,7 +1206,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          // القسم الأيسر: شاشة التول باث ثلاثية الأبعاد الكبيرة
           Expanded(
             flex: 8,
             child: Container(
@@ -1286,7 +1284,6 @@ class _Mach3MainScreenState extends State<Mach3MainScreen> {
     );
   }
 
-  // مربع الـ DRO المخصص لشاشة MDI الذي يحتوي على خانة الـ Scale الجانبية مطابقة لصورة MDI الأصلية
   Widget droWithScaleBox(String axis, double value, VoidCallback onZero) {
     return SizedBox(
       height: 28,
